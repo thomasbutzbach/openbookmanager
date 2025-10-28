@@ -5,6 +5,10 @@ config/config.php
 public/uploads/*
 !public/uploads/.gitkeep
 
+# Backups
+backups/*
+!backups/.gitkeep
+
 # Environment files
 .env
 

@@ -32,8 +32,12 @@ try {
     $stmt = $db->query('SELECT COUNT(*) as count FROM wishlist');
     $stats['wishlist'] = $stmt->fetch()['count'];
 
-    // Get last backup info (if we store it later)
-    // For now, just show current date
+    // Get version information
+    $appVersion = getAppVersion();
+    $dbVersion = getDbVersion($db);
+    $updateAvailable = checkUpdateAvailable($db);
+
+    // Get current date
     $currentDate = date('Y-m-d H:i:s');
 
 } catch (PDOException $e) {
@@ -46,6 +50,56 @@ include __DIR__ . '/../../src/Views/layout/header.php';
 <div class="container">
     <div class="page-header">
         <h1>⚙️ Settings</h1>
+    </div>
+
+    <!-- Update Available Banner -->
+    <?php if ($updateAvailable): ?>
+        <div class="alert alert-info" style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <strong>🎉 Update Available!</strong>
+                <p style="margin: 0.5rem 0 0 0;">
+                    A new version is available: <strong><?= e($updateAvailable['available']) ?></strong>
+                    (current: <?= e($updateAvailable['current']) ?>)
+                </p>
+            </div>
+            <a href="/update/" class="btn btn-primary">Update Now</a>
+        </div>
+    <?php endif; ?>
+
+    <!-- Application Info -->
+    <div class="section">
+        <h2>Application Information</h2>
+        <div class="info-grid">
+            <div class="info-item">
+                <label>Application Version</label>
+                <div><?= e($appVersion) ?></div>
+            </div>
+            <div class="info-item">
+                <label>Database Version</label>
+                <div><?= $dbVersion ? e($dbVersion) : '<span class="text-muted">Not initialized</span>' ?></div>
+            </div>
+            <div class="info-item">
+                <label>Database</label>
+                <div><?= $config['database']['database'] ?></div>
+            </div>
+            <div class="info-item">
+                <label>Environment</label>
+                <div><?= $config['app']['debug'] ? 'Development' : 'Production' ?></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Future Settings Sections -->
+    <div class="section">
+        <h2>Settings</h2>
+        <p class="text-muted">Additional settings will be available here in future updates.</p>
+
+        <div class="settings-placeholder">
+            <div>🔒 Password Change</div>
+            <div>🌐 Language Settings</div>
+            <div>🎨 Theme Settings</div>
+            <div>📊 Display Preferences</div>
+        </div>
     </div>
 
     <!-- Backup & Export Section -->
@@ -99,42 +153,6 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                     📥 Download JSON Export
                 </a>
             </div>
-        </div>
-    </div>
-
-    <!-- Application Info -->
-    <div class="section">
-        <h2>Application Information</h2>
-        <div class="info-grid">
-            <div class="info-item">
-                <label>Version</label>
-                <div>1.0.0</div>
-            </div>
-            <div class="info-item">
-                <label>Database</label>
-                <div><?= $config['database']['database'] ?></div>
-            </div>
-            <div class="info-item">
-                <label>Environment</label>
-                <div><?= $config['app']['debug'] ? 'Development' : 'Production' ?></div>
-            </div>
-            <div class="info-item">
-                <label>Current Date</label>
-                <div><?= $currentDate ?></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Future Settings Sections -->
-    <div class="section">
-        <h2>Settings</h2>
-        <p class="text-muted">Additional settings will be available here in future updates.</p>
-
-        <div class="settings-placeholder">
-            <div>🔒 Password Change</div>
-            <div>🌐 Language Settings</div>
-            <div>🎨 Theme Settings</div>
-            <div>📊 Display Preferences</div>
         </div>
     </div>
 </div>

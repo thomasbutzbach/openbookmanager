@@ -276,3 +276,76 @@ function exportJSON($data, $filename) {
     echo json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     exit;
 }
+
+/**
+ * Get application version from VERSION file
+ *
+ * @return string Version string (e.g., "1.0.0")
+ */
+function getAppVersion() {
+    $versionFile = __DIR__ . '/../VERSION';
+    if (file_exists($versionFile)) {
+        return trim(file_get_contents($versionFile));
+    }
+    return '0.0.0'; // Fallback if file doesn't exist
+}
+
+/**
+ * Get database version from system_info table
+ *
+ * @param PDO $db Database connection
+ * @return string|null Version string or null if not found
+ */
+function getDbVersion($db) {
+    try {
+        $stmt = $db->prepare("SELECT value FROM system_info WHERE `key` = 'version'");
+        $stmt->execute();
+        $result = $stmt->fetch();
+
+        if ($result && $result['value']) {
+            $versionData = json_decode($result['value'], true);
+            return $versionData['version'] ?? null;
+        }
+    } catch (PDOException $e) {
+        // Table might not exist yet
+        return null;
+    }
+
+    return null;
+}
+
+/**
+ * Compare two semantic version strings
+ *
+ * @param string $version1 First version (e.g., "1.2.0")
+ * @param string $version2 Second version (e.g., "1.1.0")
+ * @return int Returns -1 if v1 < v2, 0 if equal, 1 if v1 > v2
+ */
+function compareVersions($version1, $version2) {
+    return version_compare($version1, $version2);
+}
+
+/**
+ * Check if update is available
+ *
+ * @param PDO $db Database connection
+ * @return array|null Returns ['current' => '1.0.0', 'available' => '1.1.0'] or null if no update
+ */
+function checkUpdateAvailable($db) {
+    $appVersion = getAppVersion();
+    $dbVersion = getDbVersion($db);
+
+    if ($dbVersion === null) {
+        // Database not initialized
+        return null;
+    }
+
+    if (compareVersions($appVersion, $dbVersion) > 0) {
+        return [
+            'current' => $dbVersion,
+            'available' => $appVersion,
+        ];
+    }
+
+    return null;
+}
