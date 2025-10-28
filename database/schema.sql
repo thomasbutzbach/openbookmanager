@@ -115,11 +115,7 @@ CREATE TABLE `changelog` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- SAMPLE DATA FOR TESTING
-
--- Default user (username: admin, password: admin123)
--- IMPORTANT: Change this password after first login!
-INSERT INTO `users` (`username`, `password`) VALUES
-('admin', '$2y$10$l9O9q6yGf6pLe8l4Dav0w.bIubMfYYY0/Pqo/dirNT.CA2T24sR2a');
+-- Note: Admin user will be created during installation
 
 -- Sample main categories
 INSERT INTO `maincategories` (`code`, `title`) VALUES

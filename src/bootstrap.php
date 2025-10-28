@@ -8,8 +8,25 @@
 // Start session
 session_start();
 
+// Check if installation is needed
+$configFile = __DIR__ . '/../config/config.php';
+if (!file_exists($configFile)) {
+    // Allow access to installer
+    $requestUri = $_SERVER['REQUEST_URI'];
+    if (strpos($requestUri, '/install/') === false) {
+        header('Location: /install/');
+        exit;
+    }
+
+    // Return minimal config for installer
+    return [
+        'config' => ['app' => ['name' => 'OpenBookManager', 'debug' => true]],
+        'db' => null,
+    ];
+}
+
 // Set error reporting based on debug mode
-$config = require __DIR__ . '/../config/config.php';
+$config = require $configFile;
 
 if ($config['app']['debug']) {
     error_reporting(E_ALL);
