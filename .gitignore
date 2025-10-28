@@ -1,0 +1,30 @@
+# Configuration
+config/config.php
+
+# Uploads
+public/uploads/*
+!public/uploads/.gitkeep
+
+# Environment files
+.env
+
+# Claude Development Notes
+CLAUDE.md
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+*~
