@@ -133,7 +133,8 @@ include __DIR__ . '/../../src/Views/layout/header.php';
 <div class="container">
     <div class="page-header">
         <h1>Books</h1>
-        <div>
+        <div style="display: flex; gap: 0.5rem;">
+            <a href="/books/scan/" class="btn btn-secondary">📷 Scan Mode</a>
             <a href="/books/add.php" class="btn btn-primary">Add New Book</a>
         </div>
     </div>
@@ -307,8 +308,7 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                                 <a href="/books/edit.php?id=<?= $book['id'] ?>" class="btn btn-sm" title="Edit">✏️</a>
                                 <a href="/books/delete.php?id=<?= $book['id'] ?>"
                                    class="btn btn-sm btn-danger"
-                                   title="Delete"
-                                   onclick="return confirmDelete('Delete book \'<?= e($book['title']) ?>\'?')">🗑️</a>
+                                   title="Delete">🗑️</a>
                             </td>
                         </tr>
                     <?php endforeach; ?>

@@ -156,8 +156,7 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                                 <a href="/authors/edit.php?id=<?= $author['id'] ?>" class="btn btn-sm" title="Edit">✏️</a>
                                 <a href="/authors/delete.php?id=<?= $author['id'] ?>"
                                    class="btn btn-sm btn-danger"
-                                   title="Delete"
-                                   onclick="return confirmDelete('Delete author \'<?= e($author['surname'] . ' ' . $author['lastname']) ?>\'?')">🗑️</a>
+                                   title="Delete">🗑️</a>
                             </td>
                         </tr>
                     <?php endforeach; ?>

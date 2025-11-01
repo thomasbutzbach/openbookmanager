@@ -145,8 +145,7 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                         <a href="/categories/edit-main.php?code=<?= e($main['code']) ?>" class="btn btn-sm" title="Edit">✏️</a>
                         <a href="/categories/delete-main.php?code=<?= e($main['code']) ?>"
                            class="btn btn-sm btn-danger"
-                           title="Delete"
-                           onclick="return confirmDelete('Delete main category \'<?= e($main['title']) ?>\'?')">🗑️</a>
+                           title="Delete">🗑️</a>
                     </div>
                 </div>
 
@@ -178,8 +177,7 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                                         <a href="/categories/edit-sub.php?code=<?= e($sub['code']) ?>" class="btn btn-sm" title="Edit">✏️</a>
                                         <a href="/categories/delete-sub.php?code=<?= e($sub['code']) ?>"
                                            class="btn btn-sm btn-danger"
-                                           title="Delete"
-                                           onclick="return confirmDelete('Delete subcategory \'<?= e($sub['title']) ?>\'?')">🗑️</a>
+                                           title="Delete">🗑️</a>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>

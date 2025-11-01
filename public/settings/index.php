@@ -32,6 +32,10 @@ try {
     $stmt = $db->query('SELECT COUNT(*) as count FROM wishlist');
     $stats['wishlist'] = $stmt->fetch()['count'];
 
+    // Count scanned books
+    $stmt = $db->query('SELECT COUNT(*) as count FROM scanned_books');
+    $stats['scanned_books'] = $stmt->fetch()['count'];
+
     // Get version information
     $appVersion = getAppVersion();
     $dbVersion = getDbVersion($db);
@@ -118,6 +122,7 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                     <strong>What will be exported:</strong>
                     <ul>
                         <li><?= $stats['books'] ?> Books</li>
+                        <li><?= $stats['scanned_books'] ?> Scanned Books (pending import)</li>
                         <li><?= $stats['authors'] ?> Authors</li>
                         <li><?= $stats['maincategories'] ?> Main Categories</li>
                         <li><?= $stats['categories'] ?> Subcategories</li>
@@ -141,6 +146,7 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                     <strong>What will be exported:</strong>
                     <ul>
                         <li><?= $stats['books'] ?> Books (with authors)</li>
+                        <li><?= $stats['scanned_books'] ?> Scanned Books (pending import)</li>
                         <li><?= $stats['authors'] ?> Authors</li>
                         <li><?= $stats['maincategories'] ?> Main Categories</li>
                         <li><?= $stats['categories'] ?> Subcategories</li>
