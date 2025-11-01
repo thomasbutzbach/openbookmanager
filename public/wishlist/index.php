@@ -141,8 +141,7 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                                 <a href="/wishlist/edit.php?id=<?= $item['id'] ?>" class="btn btn-sm" title="Edit">✏️</a>
                                 <a href="/wishlist/delete.php?id=<?= $item['id'] ?>"
                                    class="btn btn-sm btn-danger"
-                                   title="Delete"
-                                   onclick="return confirmDelete('Remove \'<?= e($item['title']) ?>\' from wishlist?')">🗑️</a>
+                                   title="Delete">🗑️</a>
                             </td>
                         </tr>
                     <?php endforeach; ?>

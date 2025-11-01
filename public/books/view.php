@@ -143,8 +143,7 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                 <div class="detail-actions">
                     <a href="/books/edit.php?id=<?= $book['id'] ?>" class="btn btn-primary">✏️ Edit Book</a>
                     <a href="/books/delete.php?id=<?= $book['id'] ?>"
-                       class="btn btn-danger"
-                       onclick="return confirmDelete('Delete book \'<?= e($book['title']) ?>\'?')">🗑️ Delete Book</a>
+                       class="btn btn-danger">🗑️ Delete Book</a>
                 </div>
             </div>
         </div>

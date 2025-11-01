@@ -12,12 +12,14 @@ requireAuth();
 // Tables to export (in order to respect foreign keys)
 $tables = [
     'users',
+    'system_info',
     'maincategories',
     'categories',
     'category_sequences',
     'authors',
     'books',
     'book_author',
+    'scanned_books',
     'wishlist',
     'changelog',
 ];

@@ -44,10 +44,11 @@ function getCurrentUserId() {
 /**
  * Set flash message
  */
-function setFlash($type, $message) {
+function setFlash($type, $message, $allowHtml = false) {
     $_SESSION['flash'] = [
         'type' => $type,
-        'message' => $message
+        'message' => $message,
+        'allow_html' => $allowHtml
     ];
 }
 
@@ -348,4 +349,268 @@ function checkUpdateAvailable($db) {
     }
 
     return null;
+}
+
+/**
+ * Fetch book information from Google Books API by ISBN
+ *
+ * @param string $isbn ISBN-10 or ISBN-13
+ * @return array|null Book data or null if not found
+ */
+function fetchBookByISBN($isbn) {
+    // Clean ISBN (remove dashes, spaces)
+    $isbn = preg_replace('/[^0-9X]/i', '', $isbn);
+
+    $url = "https://www.googleapis.com/books/v1/volumes?q=isbn:" . urlencode($isbn);
+
+    // Set timeout and error handling
+    $context = stream_context_create([
+        'http' => [
+            'timeout' => 10,
+            'ignore_errors' => true,
+        ]
+    ]);
+
+    $response = @file_get_contents($url, false, $context);
+
+    if ($response === false) {
+        return null;
+    }
+
+    $data = json_decode($response, true);
+
+    if (!isset($data['totalItems']) || $data['totalItems'] == 0) {
+        return null;
+    }
+
+    $volumeInfo = $data['items'][0]['volumeInfo'] ?? [];
+
+    // Extract published year from date string (format: YYYY-MM-DD or YYYY)
+    $publishedYear = null;
+    if (isset($volumeInfo['publishedDate'])) {
+        $publishedYear = (int)substr($volumeInfo['publishedDate'], 0, 4);
+    }
+
+    // Get the best available cover image
+    $coverUrl = null;
+    if (isset($volumeInfo['imageLinks'])) {
+        // Prefer larger images
+        if (isset($volumeInfo['imageLinks']['large'])) {
+            $coverUrl = $volumeInfo['imageLinks']['large'];
+        } elseif (isset($volumeInfo['imageLinks']['medium'])) {
+            $coverUrl = $volumeInfo['imageLinks']['medium'];
+        } elseif (isset($volumeInfo['imageLinks']['small'])) {
+            $coverUrl = $volumeInfo['imageLinks']['small'];
+        } elseif (isset($volumeInfo['imageLinks']['thumbnail'])) {
+            $coverUrl = $volumeInfo['imageLinks']['thumbnail'];
+        } elseif (isset($volumeInfo['imageLinks']['smallThumbnail'])) {
+            $coverUrl = $volumeInfo['imageLinks']['smallThumbnail'];
+        }
+
+        // Force HTTPS
+        if ($coverUrl) {
+            $coverUrl = str_replace('http://', 'https://', $coverUrl);
+        }
+    }
+
+    // Try Open Library for better cover images first
+    $openLibraryCover = getOpenLibraryCover($isbn);
+    $finalCoverUrl = $openLibraryCover ?: $coverUrl;
+
+    return [
+        'isbn' => $isbn,
+        'title' => $volumeInfo['title'] ?? '',
+        'subtitle' => $volumeInfo['subtitle'] ?? null,
+        'authors' => $volumeInfo['authors'] ?? [],
+        'published_year' => $publishedYear,
+        'publisher' => $volumeInfo['publisher'] ?? null,
+        'pages' => $volumeInfo['pageCount'] ?? null,
+        'language' => $volumeInfo['language'] ?? null,
+        'description' => $volumeInfo['description'] ?? null,
+        'cover_url' => $finalCoverUrl,
+        'cover_source' => $openLibraryCover ? 'openlibrary' : ($coverUrl ? 'google' : null),
+    ];
+}
+
+/**
+ * Check if Open Library has a cover for this ISBN
+ *
+ * @param string $isbn ISBN to check
+ * @return string|null Cover URL if available, null otherwise
+ */
+function getOpenLibraryCover($isbn) {
+    $isbn = preg_replace('/[^0-9X]/i', '', $isbn);
+    $coverUrl = "https://covers.openlibrary.org/b/isbn/{$isbn}-L.jpg";
+
+    // Perform HEAD request to check if cover exists
+    $context = stream_context_create([
+        'http' => [
+            'method' => 'HEAD',
+            'timeout' => 5,
+            'ignore_errors' => true,
+        ]
+    ]);
+
+    $headers = @get_headers($coverUrl, 1, $context);
+
+    if ($headers === false) {
+        return null;
+    }
+
+    // Check if we got a 200 OK response
+    if (isset($headers[0]) && strpos($headers[0], '200') !== false) {
+        return $coverUrl;
+    }
+
+    return null;
+}
+
+/**
+ * Download book cover from URL and save locally
+ *
+ * @param string $coverUrl URL of the cover image
+ * @param string $isbn ISBN for filename
+ * @return string|null Relative path to local file or null on failure
+ */
+function downloadBookCover($coverUrl, $isbn) {
+    if (empty($coverUrl)) {
+        return null;
+    }
+
+    $uploadsDir = __DIR__ . '/../public/uploads/covers/';
+
+    // Create directory if it doesn't exist
+    if (!is_dir($uploadsDir)) {
+        if (!mkdir($uploadsDir, 0755, true)) {
+            return null;
+        }
+    }
+
+    // Determine file extension
+    $parsedUrl = parse_url($coverUrl);
+    $pathInfo = pathinfo($parsedUrl['path'] ?? '');
+    $extension = $pathInfo['extension'] ?? 'jpg';
+
+    // Validate extension
+    $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+    if (!in_array(strtolower($extension), $allowedExtensions)) {
+        $extension = 'jpg';
+    }
+
+    // Generate filename
+    $filename = 'isbn_' . preg_replace('/[^0-9X]/i', '', $isbn) . '.' . $extension;
+    $localPath = $uploadsDir . $filename;
+    $relativePath = '/uploads/covers/' . $filename;
+
+    // Download image with timeout
+    $context = stream_context_create([
+        'http' => [
+            'timeout' => 15,
+            'ignore_errors' => true,
+        ]
+    ]);
+
+    $imageData = @file_get_contents($coverUrl, false, $context);
+
+    if ($imageData === false || empty($imageData)) {
+        return null;
+    }
+
+    // Save to file
+    if (file_put_contents($localPath, $imageData) === false) {
+        return null;
+    }
+
+    return $relativePath;
+}
+
+/**
+ * Parse author name string into surname and lastname
+ * Handles formats like "Firstname Lastname" or "Lastname, Firstname"
+ *
+ * @param string $authorName Full author name
+ * @return array ['surname' => string, 'lastname' => string]
+ */
+function parseAuthorName($authorName) {
+    $authorName = trim($authorName);
+
+    // Check if format is "Lastname, Firstname"
+    if (strpos($authorName, ',') !== false) {
+        $parts = array_map('trim', explode(',', $authorName, 2));
+        return [
+            'surname' => $parts[1] ?? '',
+            'lastname' => $parts[0] ?? ''
+        ];
+    }
+
+    // Otherwise assume "Firstname Lastname" or "Firstname Middle Lastname"
+    $parts = explode(' ', $authorName);
+
+    if (count($parts) === 1) {
+        // Only one name - treat as lastname
+        return [
+            'surname' => '',
+            'lastname' => $parts[0]
+        ];
+    }
+
+    // Last part is lastname, everything else is surname
+    $lastname = array_pop($parts);
+    $surname = implode(' ', $parts);
+
+    return [
+        'surname' => $surname,
+        'lastname' => $lastname
+    ];
+}
+
+/**
+ * Find existing author by name or return null
+ *
+ * @param PDO $db Database connection
+ * @param string $surname Surname/First name
+ * @param string $lastname Last name
+ * @return array|null Author record or null
+ */
+function findAuthorByName($db, $surname, $lastname) {
+    $stmt = $db->prepare('
+        SELECT * FROM authors
+        WHERE LOWER(surname) = LOWER(?) AND LOWER(lastname) = LOWER(?)
+        LIMIT 1
+    ');
+    $stmt->execute([$surname, $lastname]);
+    return $stmt->fetch() ?: null;
+}
+
+/**
+ * Parse authors string (comma-separated) and match against existing authors
+ *
+ * @param PDO $db Database connection
+ * @param string $authorsRaw Comma-separated author names
+ * @return array Array of parsed authors with matching info
+ */
+function parseAndMatchAuthors($db, $authorsRaw) {
+    if (empty($authorsRaw)) {
+        return [];
+    }
+
+    $authorNames = array_map('trim', explode(',', $authorsRaw));
+    $result = [];
+
+    foreach ($authorNames as $name) {
+        if (empty($name)) continue;
+
+        $parsed = parseAuthorName($name);
+        $existing = findAuthorByName($db, $parsed['surname'], $parsed['lastname']);
+
+        $result[] = [
+            'original' => $name,
+            'surname' => $parsed['surname'],
+            'lastname' => $parsed['lastname'],
+            'existing_id' => $existing ? $existing['id'] : null,
+            'is_new' => $existing === null
+        ];
+    }
+
+    return $result;
 }

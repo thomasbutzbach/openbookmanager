@@ -10,18 +10,32 @@ requireAuth();
 
 $errors = [];
 $formData = [];
+$isJsonRequest = false;
 
 // Get preselected main category from URL
 $preselectedMain = $_GET['main'] ?? '';
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Get form data
-    $formData = [
-        'code' => strtoupper(trim($_POST['code'] ?? '')),
-        'code_maincategory' => trim($_POST['code_maincategory'] ?? ''),
-        'title' => trim($_POST['title'] ?? '')
-    ];
+    // Check if this is a JSON request
+    $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+    $isJsonRequest = strpos($contentType, 'application/json') !== false;
+
+    // Get form data (support both form and JSON)
+    if ($isJsonRequest) {
+        $input = json_decode(file_get_contents('php://input'), true);
+        $formData = [
+            'code' => strtoupper(trim($input['code'] ?? '')),
+            'code_maincategory' => trim($input['main_category'] ?? ''),
+            'title' => trim($input['title'] ?? '')
+        ];
+    } else {
+        $formData = [
+            'code' => strtoupper(trim($_POST['code'] ?? '')),
+            'code_maincategory' => trim($_POST['code_maincategory'] ?? ''),
+            'title' => trim($_POST['title'] ?? '')
+        ];
+    }
 
     // Validation
     if (empty($formData['code'])) {
@@ -38,13 +52,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = 'Title is required.';
     }
 
-    // Check for duplicate
+    // Check for duplicate within the same main category
     if (empty($errors)) {
         try {
-            $stmt = $db->prepare('SELECT code FROM categories WHERE code = ?');
-            $stmt->execute([$formData['code']]);
+            $stmt = $db->prepare('SELECT code FROM categories WHERE code = ? AND code_maincategory = ?');
+            $stmt->execute([$formData['code'], $formData['code_maincategory']]);
             if ($stmt->fetch()) {
-                $errors[] = 'A subcategory with this code already exists.';
+                $errors[] = 'A subcategory with this code already exists in this main category.';
             }
         } catch (PDOException $e) {
             $errors[] = 'Database error: ' . $e->getMessage();
@@ -57,12 +71,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $db->prepare('INSERT INTO categories (code, code_maincategory, title) VALUES (?, ?, ?)');
             $stmt->execute([$formData['code'], $formData['code_maincategory'], $formData['title']]);
 
+            // Initialize category sequence
+            $stmt = $db->prepare('INSERT INTO category_sequences (code_category, next_number) VALUES (?, 1)');
+            $stmt->execute([$formData['code']]);
+
+            // JSON response for AJAX requests
+            if ($isJsonRequest) {
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'Category created successfully',
+                    'code' => $formData['code'],
+                    'title' => $formData['title'],
+                    'code_maincategory' => $formData['code_maincategory']
+                ]);
+                exit;
+            }
+
+            // Regular form submission
             setFlash('success', 'Subcategory added successfully!');
             redirect('/categories/');
 
         } catch (PDOException $e) {
             $errors[] = 'Database error: ' . $e->getMessage();
         }
+    }
+
+    // If there are errors and it's a JSON request, return them
+    if (!empty($errors) && $isJsonRequest) {
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => false,
+            'message' => implode(', ', $errors)
+        ]);
+        exit;
     }
 }
 

@@ -10,14 +10,27 @@ requireAuth();
 
 $errors = [];
 $formData = [];
+$isJsonRequest = false;
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Get form data
-    $formData = [
-        'code' => strtoupper(trim($_POST['code'] ?? '')),
-        'title' => trim($_POST['title'] ?? '')
-    ];
+    // Check if this is a JSON request
+    $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+    $isJsonRequest = strpos($contentType, 'application/json') !== false;
+
+    // Get form data (support both form and JSON)
+    if ($isJsonRequest) {
+        $input = json_decode(file_get_contents('php://input'), true);
+        $formData = [
+            'code' => strtoupper(trim($input['code'] ?? '')),
+            'title' => trim($input['title'] ?? '')
+        ];
+    } else {
+        $formData = [
+            'code' => strtoupper(trim($_POST['code'] ?? '')),
+            'title' => trim($_POST['title'] ?? '')
+        ];
+    }
 
     // Validation
     if (empty($formData['code'])) {
@@ -49,12 +62,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $db->prepare('INSERT INTO maincategories (code, title) VALUES (?, ?)');
             $stmt->execute([$formData['code'], $formData['title']]);
 
+            // JSON response for AJAX requests
+            if ($isJsonRequest) {
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'Main category created successfully',
+                    'code' => $formData['code'],
+                    'title' => $formData['title']
+                ]);
+                exit;
+            }
+
+            // Regular form submission
             setFlash('success', 'Main category added successfully!');
             redirect('/categories/');
 
         } catch (PDOException $e) {
             $errors[] = 'Database error: ' . $e->getMessage();
         }
+    }
+
+    // If there are errors and it's a JSON request, return them
+    if (!empty($errors) && $isJsonRequest) {
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => false,
+            'message' => implode(', ', $errors)
+        ]);
+        exit;
     }
 }
 

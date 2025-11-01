@@ -62,6 +62,10 @@ try {
     $stmt = $db->query('SELECT * FROM book_author ORDER BY book_id, author_id');
     $export['data']['book_author'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+    // Export Scanned Books
+    $stmt = $db->query('SELECT * FROM scanned_books ORDER BY scanned_at DESC');
+    $export['data']['scanned_books'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
     // Export Wishlist
     $stmt = $db->query('SELECT * FROM wishlist ORDER BY created_at DESC');
     $export['data']['wishlist'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -69,6 +73,13 @@ try {
     // Export Users (excluding passwords for security)
     $stmt = $db->query('SELECT id, username, created_at, updated_at FROM users ORDER BY id');
     $export['data']['users'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Export System Info
+    $stmt = $db->query('SHOW TABLES LIKE "system_info"');
+    if ($stmt->rowCount() > 0) {
+        $stmt = $db->query('SELECT * FROM system_info');
+        $export['data']['system_info'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 
     // Export Changelog (if exists)
     $stmt = $db->query('SHOW TABLES LIKE "changelog"');
@@ -80,6 +91,7 @@ try {
     // Add statistics
     $export['metadata']['statistics'] = [
         'books' => count($export['data']['books']),
+        'scanned_books' => count($export['data']['scanned_books']),
         'authors' => count($export['data']['authors']),
         'maincategories' => count($export['data']['maincategories']),
         'categories' => count($export['data']['categories']),

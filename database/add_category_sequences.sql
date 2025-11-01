@@ -1,21 +1,22 @@
--- Add category sequence table for proper autoincrement behavior
--- This ensures that deleted book numbers are never reused
+-- Migration: Add category_sequences table
+-- This table tracks the next available sequence number for each category
+-- Used for automatic book numbering within categories
 
 CREATE TABLE IF NOT EXISTS `category_sequences` (
     `code_category` VARCHAR(2) NOT NULL PRIMARY KEY,
-    `last_number` INT UNSIGNED NOT NULL DEFAULT 0,
+    `next_number` INT UNSIGNED NOT NULL DEFAULT 1,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (`code_category`) REFERENCES `categories`(`code`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Initialize sequences for existing categories based on current max numbers
-INSERT INTO `category_sequences` (`code_category`, `last_number`)
-SELECT code_category, COALESCE(MAX(number_in_category), 0)
-FROM books
-GROUP BY code_category
-ON DUPLICATE KEY UPDATE last_number = VALUES(last_number);
-
--- Add entries for categories without books yet
-INSERT IGNORE INTO `category_sequences` (`code_category`, `last_number`)
-SELECT code, 0
-FROM categories
-WHERE code NOT IN (SELECT code_category FROM category_sequences);
+INSERT INTO `category_sequences` (`code_category`, `next_number`)
+SELECT
+    c.code,
+    COALESCE(MAX(b.number_in_category), 0) + 1 as next_number
+FROM categories c
+LEFT JOIN books b ON b.code_category = c.code
+GROUP BY c.code
+ON DUPLICATE KEY UPDATE
+    `next_number` = VALUES(`next_number`);

@@ -9,12 +9,19 @@
     --success-color: #10b981;
     --danger-color: #ef4444;
     --warning-color: #f59e0b;
+    --info-color: #0ea5e9;
     --bg-color: #f8fafc;
+    --bg-secondary: #f1f5f9;
     --text-color: #1e293b;
     --border-color: #e2e8f0;
     --card-bg: #ffffff;
     --navbar-bg: #1e293b;
     --navbar-text: #f1f5f9;
+}
+
+/* Alpine.js cloak to prevent flash */
+[x-cloak] {
+    display: none !important;
 }
 
 * {
