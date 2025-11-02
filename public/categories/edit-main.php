@@ -65,7 +65,7 @@ try {
     $stmt = $db->prepare('
         SELECT COUNT(DISTINCT b.id) as count
         FROM books b
-        JOIN categories c ON b.code_category = c.code
+        JOIN categories c ON b.code_category = c.code AND b.code_maincategory = c.code_maincategory
         WHERE c.code_maincategory = ?
     ');
     $stmt->execute([$code]);

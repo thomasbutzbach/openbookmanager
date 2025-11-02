@@ -73,7 +73,7 @@ try {
         FROM books b
         LEFT JOIN book_author ba ON b.id = ba.book_id
         LEFT JOIN authors a ON ba.author_id = a.id
-        LEFT JOIN categories c ON b.code_category = c.code
+        LEFT JOIN categories c ON b.code_category = c.code AND b.code_maincategory = c.code_maincategory
         LEFT JOIN maincategories mc ON c.code_maincategory = mc.code
         {$whereClause}
         GROUP BY b.id

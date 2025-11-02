@@ -22,7 +22,7 @@ try {
                c.title as category_title,
                mc.code as maincat_code
         FROM books b
-        JOIN categories c ON b.code_category = c.code
+        JOIN categories c ON b.code_category = c.code AND b.code_maincategory = c.code_maincategory
         JOIN maincategories mc ON c.code_maincategory = mc.code
         WHERE b.id = ?
     ');

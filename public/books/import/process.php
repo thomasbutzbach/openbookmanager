@@ -34,19 +34,29 @@ if ($scannedBookId <= 0 || empty($title) || empty($category) || empty($authors))
 try {
     $db->beginTransaction();
 
-    // Get next number for this category
-    $stmt = $db->prepare('SELECT next_number FROM category_sequences WHERE code_category = ? FOR UPDATE');
+    // Get main category for the selected category
+    $stmt = $db->prepare('SELECT code_maincategory FROM categories WHERE code = ?');
     $stmt->execute([$category]);
-    $sequence = $stmt->fetch();
+    $categoryData = $stmt->fetch();
 
-    if (!$sequence) {
-        // Initialize sequence if doesn't exist
-        $stmt = $db->prepare('INSERT INTO category_sequences (code_category, next_number) VALUES (?, 1)');
-        $stmt->execute([$category]);
-        $numberInCategory = 1;
-    } else {
-        $numberInCategory = $sequence['next_number'];
+    if (!$categoryData) {
+        throw new Exception('Invalid category selected');
     }
+
+    $codeMaincategory = $categoryData['code_maincategory'];
+
+    // Get and increment sequence for this category (proper autoincrement behavior)
+    $stmt = $db->prepare('
+        INSERT INTO category_sequences (code_category, code_maincategory, next_number)
+        VALUES (?, ?, 1)
+        ON DUPLICATE KEY UPDATE next_number = next_number + 1
+    ');
+    $stmt->execute([$category, $codeMaincategory]);
+
+    // Get the new number
+    $stmt = $db->prepare('SELECT next_number FROM category_sequences WHERE code_category = ? AND code_maincategory = ?');
+    $stmt->execute([$category, $codeMaincategory]);
+    $numberInCategory = $stmt->fetch()['next_number'];
 
     // Get scanned book info (for cover)
     $stmt = $db->prepare('SELECT cover_local, cover_url FROM scanned_books WHERE id = ?');
@@ -60,9 +70,9 @@ try {
     // Insert book
     $stmt = $db->prepare('
         INSERT INTO books (
-            title, year, isbn, cover_image, code_category,
+            title, year, isbn, cover_image, code_category, code_maincategory,
             number_in_category, publisher, language, notes
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ');
 
     $stmt->execute([
@@ -71,6 +81,7 @@ try {
         $input['isbn'] ?: null,
         $scannedBook['cover_local'] ?: $scannedBook['cover_url'],
         $category,
+        $codeMaincategory,
         $numberInCategory,
         $input['publisher'] ?: null,
         $input['language'] ?: null,
@@ -106,9 +117,8 @@ try {
         $stmt->execute([$bookId, $authorId]);
     }
 
-    // Update sequence
-    $stmt = $db->prepare('UPDATE category_sequences SET next_number = next_number + 1 WHERE code_category = ?');
-    $stmt->execute([$category]);
+    // Sequence already updated by INSERT ... ON DUPLICATE KEY UPDATE above
+    // No need for separate UPDATE
 
     // Update scanned book status
     $stmt = $db->prepare('

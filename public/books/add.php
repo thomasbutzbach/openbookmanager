@@ -44,24 +44,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $db->beginTransaction();
 
+            // Get main category for the selected category
+            $stmt = $db->prepare('SELECT code_maincategory FROM categories WHERE code = ?');
+            $stmt->execute([$formData['code_category']]);
+            $categoryData = $stmt->fetch();
+
+            if (!$categoryData) {
+                throw new Exception('Invalid category selected');
+            }
+
+            $codeMaincategory = $categoryData['code_maincategory'];
+
             // Get and increment sequence for this category (proper autoincrement behavior)
             // Insert or update sequence
             $stmt = $db->prepare('
-                INSERT INTO category_sequences (code_category, last_number)
-                VALUES (?, 1)
-                ON DUPLICATE KEY UPDATE last_number = last_number + 1
+                INSERT INTO category_sequences (code_category, code_maincategory, next_number)
+                VALUES (?, ?, 1)
+                ON DUPLICATE KEY UPDATE next_number = next_number + 1
             ');
-            $stmt->execute([$formData['code_category']]);
+            $stmt->execute([$formData['code_category'], $codeMaincategory]);
 
             // Get the new number
-            $stmt = $db->prepare('SELECT last_number FROM category_sequences WHERE code_category = ?');
-            $stmt->execute([$formData['code_category']]);
-            $nextNumber = $stmt->fetch()['last_number'];
+            $stmt = $db->prepare('SELECT next_number FROM category_sequences WHERE code_category = ? AND code_maincategory = ?');
+            $stmt->execute([$formData['code_category'], $codeMaincategory]);
+            $nextNumber = $stmt->fetch()['next_number'];
 
             // Insert book
             $stmt = $db->prepare('
-                INSERT INTO books (title, year, isbn, cover_image, code_category, number_in_category, publisher, language, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO books (title, year, isbn, cover_image, code_category, code_maincategory, number_in_category, publisher, language, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ');
             $stmt->execute([
                 $formData['title'],
@@ -69,6 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $formData['isbn'] ?: null,
                 $formData['cover_image'] ?: null,
                 $formData['code_category'],
+                $codeMaincategory,
                 $nextNumber,
                 $formData['publisher'] ?: null,
                 $formData['language'] ?: null,

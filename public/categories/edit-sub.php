@@ -9,9 +9,10 @@ extract($app);
 requireAuth();
 
 $code = $_GET['code'] ?? null;
+$mainCode = $_GET['main'] ?? null;
 
-if (!$code) {
-    setFlash('error', 'Category code is required.');
+if (!$code || !$mainCode) {
+    setFlash('error', 'Category code and main category are required.');
     redirect('/categories/');
 }
 
@@ -38,8 +39,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // If no errors, update
     if (empty($errors)) {
         try {
-            $stmt = $db->prepare('UPDATE categories SET title = ?, code_maincategory = ? WHERE code = ?');
-            $stmt->execute([$formData['title'], $formData['code_maincategory'], $code]);
+            // Must use composite key in WHERE clause!
+            $stmt = $db->prepare('UPDATE categories SET title = ?, code_maincategory = ? WHERE code = ? AND code_maincategory = ?');
+            $stmt->execute([$formData['title'], $formData['code_maincategory'], $code, $mainCode]);
 
             setFlash('success', 'Subcategory updated successfully!');
             redirect('/categories/');
@@ -56,9 +58,9 @@ try {
         SELECT c.*, mc.title as maincat_title
         FROM categories c
         JOIN maincategories mc ON c.code_maincategory = mc.code
-        WHERE c.code = ?
+        WHERE c.code = ? AND c.code_maincategory = ?
     ');
-    $stmt->execute([$code]);
+    $stmt->execute([$code, $mainCode]);
     $category = $stmt->fetch();
 
     if (!$category) {
@@ -67,8 +69,8 @@ try {
     }
 
     // Get books
-    $stmt = $db->prepare('SELECT COUNT(*) as count FROM books WHERE code_category = ?');
-    $stmt->execute([$code]);
+    $stmt = $db->prepare('SELECT COUNT(*) as count FROM books WHERE code_category = ? AND code_maincategory = ?');
+    $stmt->execute([$code, $category['code_maincategory']]);
     $bookCount = $stmt->fetch()['count'];
 
     // Get all main categories

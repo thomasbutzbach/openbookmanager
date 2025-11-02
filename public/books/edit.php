@@ -51,27 +51,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $db->beginTransaction();
 
+            // Get main category for the selected category
+            $stmt = $db->prepare('SELECT code_maincategory FROM categories WHERE code = ?');
+            $stmt->execute([$formData['code_category']]);
+            $categoryData = $stmt->fetch();
+
+            if (!$categoryData) {
+                throw new Exception('Invalid category selected');
+            }
+
+            $codeMaincategory = $categoryData['code_maincategory'];
+
             // Get current book data to check if category changed
-            $stmt = $db->prepare('SELECT code_category, number_in_category FROM books WHERE id = ?');
+            $stmt = $db->prepare('SELECT code_category, code_maincategory, number_in_category FROM books WHERE id = ?');
             $stmt->execute([$bookId]);
             $currentBook = $stmt->fetch();
 
             $numberInCategory = $currentBook['number_in_category'];
 
             // If category changed, get next number in new category (proper autoincrement behavior)
-            if ($currentBook['code_category'] !== $formData['code_category']) {
+            if ($currentBook['code_category'] !== $formData['code_category'] || $currentBook['code_maincategory'] !== $codeMaincategory) {
                 // Increment sequence for new category
                 $stmt = $db->prepare('
-                    INSERT INTO category_sequences (code_category, last_number)
-                    VALUES (?, 1)
-                    ON DUPLICATE KEY UPDATE last_number = last_number + 1
+                    INSERT INTO category_sequences (code_category, code_maincategory, next_number)
+                    VALUES (?, ?, 1)
+                    ON DUPLICATE KEY UPDATE next_number = next_number + 1
                 ');
-                $stmt->execute([$formData['code_category']]);
+                $stmt->execute([$formData['code_category'], $codeMaincategory]);
 
                 // Get the new number
-                $stmt = $db->prepare('SELECT last_number FROM category_sequences WHERE code_category = ?');
-                $stmt->execute([$formData['code_category']]);
-                $numberInCategory = $stmt->fetch()['last_number'];
+                $stmt = $db->prepare('SELECT next_number FROM category_sequences WHERE code_category = ? AND code_maincategory = ?');
+                $stmt->execute([$formData['code_category'], $codeMaincategory]);
+                $numberInCategory = $stmt->fetch()['next_number'];
             }
 
             // Update book
@@ -82,6 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     isbn = ?,
                     cover_image = ?,
                     code_category = ?,
+                    code_maincategory = ?,
                     number_in_category = ?,
                     publisher = ?,
                     language = ?,
@@ -94,6 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $formData['isbn'] ?: null,
                 $formData['cover_image'] ?: null,
                 $formData['code_category'],
+                $codeMaincategory,
                 $numberInCategory,
                 $formData['publisher'] ?: null,
                 $formData['language'] ?: null,
@@ -132,7 +145,7 @@ try {
                mc.code as maincat_code,
                mc.title as maincat_title
         FROM books b
-        JOIN categories c ON b.code_category = c.code
+        JOIN categories c ON b.code_category = c.code AND b.code_maincategory = c.code_maincategory
         JOIN maincategories mc ON c.code_maincategory = mc.code
         WHERE b.id = ?
     ');
