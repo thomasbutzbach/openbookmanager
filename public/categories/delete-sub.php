@@ -9,9 +9,10 @@ extract($app);
 requireAuth();
 
 $code = $_GET['code'] ?? null;
+$mainCode = $_GET['main'] ?? null;
 
-if (!$code) {
-    setFlash('error', 'Category code is required.');
+if (!$code || !$mainCode) {
+    setFlash('error', 'Category code and main category are required.');
     redirect('/categories/');
 }
 
@@ -21,9 +22,9 @@ try {
         SELECT c.*, mc.title as maincat_title
         FROM categories c
         JOIN maincategories mc ON c.code_maincategory = mc.code
-        WHERE c.code = ?
+        WHERE c.code = ? AND c.code_maincategory = ?
     ');
-    $stmt->execute([$code]);
+    $stmt->execute([$code, $mainCode]);
     $category = $stmt->fetch();
 
     if (!$category) {
@@ -32,15 +33,15 @@ try {
     }
 
     // Check if has books
-    $stmt = $db->prepare('SELECT COUNT(*) as count FROM books WHERE code_category = ?');
-    $stmt->execute([$code]);
+    $stmt = $db->prepare('SELECT COUNT(*) as count FROM books WHERE code_category = ? AND code_maincategory = ?');
+    $stmt->execute([$code, $category['code_maincategory']]);
     $bookCount = $stmt->fetch()['count'];
 
     // Get books for display
     $books = [];
     if ($bookCount > 0) {
-        $stmt = $db->prepare('SELECT * FROM books WHERE code_category = ? ORDER BY title LIMIT 10');
-        $stmt->execute([$code]);
+        $stmt = $db->prepare('SELECT * FROM books WHERE code_category = ? AND code_maincategory = ? ORDER BY title LIMIT 10');
+        $stmt->execute([$code, $category['code_maincategory']]);
         $books = $stmt->fetchAll();
     }
 
@@ -55,8 +56,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($confirm === 'yes') {
         // Check again if has books
         try {
-            $stmt = $db->prepare('SELECT COUNT(*) as count FROM books WHERE code_category = ?');
+            // Need to get category info again for code_maincategory
+            $stmt = $db->prepare('SELECT code_maincategory FROM categories WHERE code = ?');
             $stmt->execute([$code]);
+            $cat = $stmt->fetch();
+
+            $stmt = $db->prepare('SELECT COUNT(*) as count FROM books WHERE code_category = ? AND code_maincategory = ?');
+            $stmt->execute([$code, $cat['code_maincategory']]);
             $bookCount = $stmt->fetch()['count'];
 
             if ($bookCount > 0) {
@@ -64,9 +70,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 redirect('/categories/');
             }
 
-            // Delete subcategory
-            $stmt = $db->prepare('DELETE FROM categories WHERE code = ?');
-            $stmt->execute([$code]);
+            // Delete subcategory (must use composite key!)
+            $stmt = $db->prepare('DELETE FROM categories WHERE code = ? AND code_maincategory = ?');
+            $stmt->execute([$code, $cat['code_maincategory']]);
 
             setFlash('success', 'Subcategory deleted successfully!');
             redirect('/categories/');
@@ -154,7 +160,7 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                     </div>
                 </div>
 
-                <form method="POST" action="/categories/delete-sub.php?code=<?= e($code) ?>" style="margin-top: 2rem;">
+                <form method="POST" action="/categories/delete-sub.php?code=<?= e($code) ?>&main=<?= e($mainCode) ?>" style="margin-top: 2rem;">
                     <p><strong>Are you sure you want to delete this subcategory?</strong></p>
 
                     <div class="form-actions">

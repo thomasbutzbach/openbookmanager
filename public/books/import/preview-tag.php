@@ -29,7 +29,7 @@ if (empty($categoryCode)) {
 try {
     // Get category info including main category
     $stmt = $db->prepare('
-        SELECT c.code, c.title, m.code as maincat_code
+        SELECT c.code, c.code_maincategory, c.title, m.code as maincat_code
         FROM categories c
         JOIN maincategories m ON c.code_maincategory = m.code
         WHERE c.code = ?
@@ -43,8 +43,8 @@ try {
     }
 
     // Get next number for this category
-    $stmt = $db->prepare('SELECT next_number FROM category_sequences WHERE code_category = ?');
-    $stmt->execute([$categoryCode]);
+    $stmt = $db->prepare('SELECT next_number FROM category_sequences WHERE code_category = ? AND code_maincategory = ?');
+    $stmt->execute([$categoryCode, $category['code_maincategory']]);
     $sequence = $stmt->fetch();
 
     $nextNumber = $sequence ? $sequence['next_number'] : 1;

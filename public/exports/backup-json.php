@@ -43,7 +43,7 @@ try {
                GROUP_CONCAT(ba.author_id) as author_ids
         FROM books b
         LEFT JOIN book_author ba ON b.id = ba.book_id
-        GROUP BY b.id
+        GROUP BY b.id, b.code_category, b.code_maincategory
         ORDER BY b.id
     ');
     $books = $stmt->fetchAll(PDO::FETCH_ASSOC);

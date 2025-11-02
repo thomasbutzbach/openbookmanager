@@ -10,23 +10,27 @@ requireAuth();
 
 // Get search parameter
 $search = $_GET['search'] ?? '';
+$searchParam = "%{$search}%";
 
 try {
     // Get main categories with subcategory count
+    // When searching, also include main categories that have matching subcategories
     $sql = '
         SELECT mc.*,
-               COUNT(DISTINCT c.code) as subcat_count,
+               COUNT(DISTINCT CONCAT(c.code, "-", c.code_maincategory)) as subcat_count,
                COUNT(DISTINCT b.id) as book_count
         FROM maincategories mc
         LEFT JOIN categories c ON mc.code = c.code_maincategory
-        LEFT JOIN books b ON c.code = b.code_category
+        LEFT JOIN books b ON c.code = b.code_category AND c.code_maincategory = b.code_maincategory
     ';
 
     $params = [];
 
     if (!empty($search)) {
-        $sql .= ' WHERE mc.code LIKE ? OR mc.title LIKE ?';
-        $searchParam = "%{$search}%";
+        // Include main categories that match OR have subcategories that match
+        $sql .= ' WHERE (mc.code LIKE ? OR mc.title LIKE ? OR c.code LIKE ? OR c.title LIKE ?)';
+        $params[] = $searchParam;
+        $params[] = $searchParam;
         $params[] = $searchParam;
         $params[] = $searchParam;
     }
@@ -39,24 +43,28 @@ try {
 
     // Get all subcategories with book count
     $sql = '
-        SELECT c.*,
+        SELECT c.code,
+               c.code_maincategory,
+               c.title,
+               c.created_at,
+               c.updated_at,
                mc.title as maincat_title,
                COUNT(b.id) as book_count
         FROM categories c
         JOIN maincategories mc ON c.code_maincategory = mc.code
-        LEFT JOIN books b ON c.code = b.code_category
+        LEFT JOIN books b ON c.code = b.code_category AND c.code_maincategory = b.code_maincategory
     ';
 
     $params = [];
 
     if (!empty($search)) {
-        $sql .= ' WHERE c.code LIKE ? OR c.title LIKE ?';
-        $searchParam = "%{$search}%";
+        $sql .= ' WHERE c.code LIKE ? OR c.title LIKE ? OR mc.title LIKE ?';
+        $params[] = $searchParam;
         $params[] = $searchParam;
         $params[] = $searchParam;
     }
 
-    $sql .= ' GROUP BY c.code ORDER BY mc.title, c.title';
+    $sql .= ' GROUP BY c.code, c.code_maincategory, c.title, c.created_at, c.updated_at, mc.title ORDER BY mc.title, c.title';
 
     $stmt = $db->prepare($sql);
     $stmt->execute($params);
@@ -174,8 +182,8 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                                         <?php endif; ?>
                                     </td>
                                     <td class="actions">
-                                        <a href="/categories/edit-sub.php?code=<?= e($sub['code']) ?>" class="btn btn-sm" title="Edit">✏️</a>
-                                        <a href="/categories/delete-sub.php?code=<?= e($sub['code']) ?>"
+                                        <a href="/categories/edit-sub.php?code=<?= e($sub['code']) ?>&main=<?= e($sub['code_maincategory']) ?>" class="btn btn-sm" title="Edit">✏️</a>
+                                        <a href="/categories/delete-sub.php?code=<?= e($sub['code']) ?>&main=<?= e($sub['code_maincategory']) ?>"
                                            class="btn btn-sm btn-danger"
                                            title="Delete">🗑️</a>
                                     </td>

@@ -71,9 +71,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $db->prepare('INSERT INTO categories (code, code_maincategory, title) VALUES (?, ?, ?)');
             $stmt->execute([$formData['code'], $formData['code_maincategory'], $formData['title']]);
 
-            // Initialize category sequence
-            $stmt = $db->prepare('INSERT INTO category_sequences (code_category, next_number) VALUES (?, 1)');
-            $stmt->execute([$formData['code']]);
+            // Initialize category sequence with composite key
+            $stmt = $db->prepare('INSERT INTO category_sequences (code_category, code_maincategory, next_number) VALUES (?, ?, 1)');
+            $stmt->execute([$formData['code'], $formData['code_maincategory']]);
 
             // JSON response for AJAX requests
             if ($isJsonRequest) {
