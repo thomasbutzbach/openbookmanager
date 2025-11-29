@@ -264,7 +264,7 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                         <th>Year</th>
                         <th>Category</th>
                         <th>Language</th>
-                        <th>Actions</th>
+                        <th width="<?= $config['labels']['enabled'] ? '180' : '130' ?>">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -303,7 +303,36 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                                 <br><?= e($book['category_title']) ?>
                             </td>
                             <td><?= e($book['language'] ?: '-') ?></td>
-                            <td class="actions">
+                            <td class="actions" style="white-space: nowrap;">
+                                <?php if ($config['labels']['enabled']): ?>
+                                    <div style="display: inline-block;" x-data="{ open: false }">
+                                        <button type="button"
+                                                @click="open = !open"
+                                                x-ref="trigger"
+                                                class="btn btn-sm"
+                                                title="Print Labels">🏷️</button>
+                                        <div x-show="open"
+                                             @click.away="open = false"
+                                             x-cloak
+                                             x-transition
+                                             style="position: fixed;
+                                                    background: white;
+                                                    border: 1px solid #e2e8f0;
+                                                    border-radius: 0.375rem;
+                                                    padding: 0.5rem;
+                                                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                                                    z-index: 1000;
+                                                    min-width: 80px;"
+                                             x-bind:style="{
+                                                 top: ($refs.trigger.getBoundingClientRect().bottom + 4) + 'px',
+                                                 left: $refs.trigger.getBoundingClientRect().left + 'px'
+                                             }">
+                                            <a href="/labels/download.php?type=dual&id=<?= $book['id'] ?>" class="btn btn-sm" style="display: block; margin-bottom: 0.5rem; text-align: left; white-space: nowrap;" download>Both</a>
+                                            <a href="/labels/download.php?type=spine&id=<?= $book['id'] ?>" class="btn btn-sm" style="display: block; margin-bottom: 0.5rem; text-align: left; white-space: nowrap;" download>Spine</a>
+                                            <a href="/labels/download.php?type=full&id=<?= $book['id'] ?>" class="btn btn-sm" style="display: block; text-align: left; white-space: nowrap;" download>Full</a>
+                                        </div>
+                                    </div>
+                                <?php endif; ?>
                                 <a href="/books/view.php?id=<?= $book['id'] ?>" class="btn btn-sm" title="View">👁️</a>
                                 <a href="/books/edit.php?id=<?= $book['id'] ?>" class="btn btn-sm" title="Edit">✏️</a>
                                 <a href="/books/delete.php?id=<?= $book['id'] ?>"

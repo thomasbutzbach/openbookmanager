@@ -614,3 +614,284 @@ function parseAndMatchAuthors($db, $authorsRaw) {
 
     return $result;
 }
+
+/**
+ * ============================================================================
+ * LABEL PRINTING HELPERS
+ * ============================================================================
+ */
+
+/**
+ * Sanitize text for ZPL output
+ * Removes special characters that could break ZPL syntax
+ */
+function sanitizeZPL($text) {
+    // Replace problematic characters
+    $text = str_replace(['^', '~', '\\'], '', $text);
+    // Limit length and trim
+    return trim(substr($text, 0, 100));
+}
+
+/**
+ * Convert millimeters to dots based on DPI
+ */
+function mmToDots($mm, $dpi = 203) {
+    return round(($mm / 25.4) * $dpi);
+}
+
+/**
+ * Generate ZPL for category label (shelf label)
+ * Shows: Category Code + Full Title (no barcode)
+ *
+ * @param string $mainCategoryCode Main category code (e.g., "SF")
+ * @param string $categoryCode Subcategory code (e.g., "PH")
+ * @param string $categoryTitle Full category title
+ * @param array $config Label configuration
+ * @return string ZPL code
+ */
+function generateCategoryLabel($mainCategoryCode, $categoryCode, $categoryTitle, $config) {
+    $mainCategoryCode = sanitizeZPL($mainCategoryCode);
+    $categoryCode = sanitizeZPL($categoryCode);
+    $categoryTitle = sanitizeZPL($categoryTitle);
+
+    // Combined code display
+    $displayCode = $mainCategoryCode . ' ' . $categoryCode;
+
+    // Convert dimensions
+    $width = mmToDots($config['width_mm'], $config['dpi']);
+    $height = mmToDots($config['height_mm'], $config['dpi']);
+
+    // Font sizes from config
+    $codeSize = $config['category_label']['code_size'];
+    $titleSize = $config['category_label']['title_size'];
+
+    // Word wrap title for 38mm width (approx. 22-24 chars per line at size 25)
+    $maxCharsPerLine = 23;
+    $titleLines = [];
+
+    if (strlen($categoryTitle) <= $maxCharsPerLine) {
+        $titleLines[] = $categoryTitle;
+    } else {
+        // Split at word boundaries if possible
+        $words = explode(' ', $categoryTitle);
+        $currentLine = '';
+
+        foreach ($words as $word) {
+            if (strlen($currentLine . ' ' . $word) <= $maxCharsPerLine) {
+                $currentLine .= ($currentLine ? ' ' : '') . $word;
+            } else {
+                if ($currentLine) {
+                    $titleLines[] = $currentLine;
+                }
+                $currentLine = $word;
+            }
+        }
+
+        if ($currentLine) {
+            $titleLines[] = $currentLine;
+        }
+
+        // Limit to 3 lines max
+        $titleLines = array_slice($titleLines, 0, 3);
+    }
+
+    // Build ZPL
+    $zpl = "^XA\n";
+    $zpl .= "^PW{$width}\n";
+    $zpl .= "^LL{$height}\n";
+
+    // Print settings
+    $zpl .= "^MD{$config['darkness']}\n";
+    $zpl .= "^PR{$config['print_speed']}\n";
+
+    // Use Unicode encoding for umlauts (UTF-8)
+    $zpl .= "^CI28\n";  // UTF-8 encoding
+
+    // Ensure exactly 3 title lines for consistent layout (fill with empty lines)
+    while (count($titleLines) < 3) {
+        $titleLines[] = '';
+    }
+
+    // Calculate vertical centering (always: code + 3 title lines)
+    $lineSpacing = $titleSize + 2;
+    $totalContentHeight = $codeSize + 6 + (3 * $lineSpacing);  // Code + gap + 3 title lines
+    $verticalOffset = ($height - $totalContentHeight) / 2;
+
+    $codeY = max(2, round($verticalOffset));  // Don't go below Y=2
+    $titleStartY = $codeY + $codeSize + 6;  // 6 pixels gap between code and title
+
+    // Category code (centered horizontally and vertically) - optimized for 38x19mm
+    $blockWidth = $width - 10;  // Full width minus margins
+    $zpl .= "^FO5,{$codeY}^A0N,{$codeSize},{$codeSize}^FB{$blockWidth},1,0,C,0^FD{$displayCode}^FS\n";
+
+    // Category title (always 3 lines, centered) - optimized for 38x19mm
+    foreach ($titleLines as $index => $line) {
+        $yPos = $titleStartY + ($index * $lineSpacing);
+        $zpl .= "^FO5,{$yPos}^A0N,{$titleSize},{$titleSize}^FB{$blockWidth},1,0,C,0^FD{$line}^FS\n";
+    }
+
+    $zpl .= "^XZ";
+
+    return $zpl;
+}
+
+/**
+ * Generate ZPL for spine label (minimal book label for spine)
+ * Shows: Book Tag + Barcode
+ *
+ * @param string $mainCategoryCode Main category code
+ * @param string $categoryCode Subcategory code
+ * @param int $number Book number in category
+ * @param array $config Label configuration
+ * @return string ZPL code
+ */
+function generateSpineLabel($mainCategoryCode, $categoryCode, $number, $config) {
+    $mainCategoryCode = sanitizeZPL($mainCategoryCode);
+    $categoryCode = sanitizeZPL($categoryCode);
+
+    // Display format: "MC SU 0001"
+    $displayTag = generateBookTag($mainCategoryCode, $categoryCode, $number);
+
+    // Barcode format: "MCSU0001" (no spaces/special chars)
+    $barcodeData = $mainCategoryCode . $categoryCode . str_pad($number, 4, '0', STR_PAD_LEFT);
+
+    // Convert dimensions
+    $width = mmToDots($config['width_mm'], $config['dpi']);
+    $height = mmToDots($config['height_mm'], $config['dpi']);
+
+    // Font sizes from config
+    $tagSize = $config['spine_label']['tag_size'];
+    $barcodeHeight = $config['spine_label']['barcode_height'];
+
+    // Build ZPL
+    $zpl = "^XA\n";
+    $zpl .= "^PW{$width}\n";
+    $zpl .= "^LL{$height}\n";
+
+    // Print settings
+    $zpl .= "^MD{$config['darkness']}\n";
+    $zpl .= "^PR{$config['print_speed']}\n";
+    $zpl .= "^CI28\n";  // UTF-8 encoding for umlauts
+
+    // Calculate vertical centering for spine label
+    $totalContentHeight = $tagSize + 6 + $barcodeHeight;
+    $verticalOffset = ($height - $totalContentHeight) / 2;
+
+    $tagY = max(3, round($verticalOffset));
+    $barcodeY = $tagY + $tagSize + 6;
+
+    // Book tag (human readable, centered) - optimized for 38x19mm
+    $blockWidth = $width - 10;
+    $zpl .= "^FO5,{$tagY}^A0N,{$tagSize},{$tagSize}^FB{$blockWidth},1,0,C,0^FD{$displayTag}^FS\n";
+
+    // Barcode (Code 128, centered) - optimized for 38x19mm
+    // Calculate approximate barcode width and center it manually
+    // Code 128: ~11 modules per character, module width = 2
+    $barcodeLength = strlen($barcodeData);
+    $moduleWidth = 2;
+    $estimatedBarcodeWidth = ($barcodeLength * 11 + 35) * $moduleWidth;  // +35 for start/stop/checksum
+    $barcodeX = round(($width - $estimatedBarcodeWidth) / 2);
+    $barcodeX = max(5, $barcodeX);  // Ensure minimum margin
+
+    $zpl .= "^BY{$moduleWidth},{$moduleWidth},{$barcodeHeight}\n";
+    $zpl .= "^FO{$barcodeX},{$barcodeY}^BCN,{$barcodeHeight},N,N,N^FD{$barcodeData}^FS\n";
+
+    $zpl .= "^XZ";
+
+    return $zpl;
+}
+
+/**
+ * Generate ZPL for full book label (back cover label)
+ * Shows: Book Tag + Barcode + Author + Title
+ *
+ * @param string $mainCategoryCode Main category code
+ * @param string $categoryCode Subcategory code
+ * @param int $number Book number in category
+ * @param string $author Author name(s)
+ * @param string $title Book title
+ * @param array $config Label configuration
+ * @return string ZPL code
+ */
+function generateFullBookLabel($mainCategoryCode, $categoryCode, $number, $author, $title, $config) {
+    $mainCategoryCode = sanitizeZPL($mainCategoryCode);
+    $categoryCode = sanitizeZPL($categoryCode);
+    $author = sanitizeZPL($author);
+    $title = sanitizeZPL($title);
+
+    // Display format: "MC SU 0001"
+    $displayTag = generateBookTag($mainCategoryCode, $categoryCode, $number);
+
+    // Barcode format: "MCSU0001"
+    $barcodeData = $mainCategoryCode . $categoryCode . str_pad($number, 4, '0', STR_PAD_LEFT);
+
+    // Truncate author and title to fit
+    $authorShort = substr($author, 0, 30);
+    $titleShort = substr($title, 0, 32);
+
+    // Convert dimensions
+    $width = mmToDots($config['width_mm'], $config['dpi']);
+    $height = mmToDots($config['height_mm'], $config['dpi']);
+
+    // Font sizes from config
+    $tagSize = $config['full_label']['tag_size'];
+    $barcodeHeight = $config['full_label']['barcode_height'];
+    $authorSize = $config['full_label']['author_size'];
+    $titleSize = $config['full_label']['title_size'];
+
+    // Build ZPL
+    $zpl = "^XA\n";
+    $zpl .= "^PW{$width}\n";
+    $zpl .= "^LL{$height}\n";
+
+    // Print settings
+    $zpl .= "^MD{$config['darkness']}\n";
+    $zpl .= "^PR{$config['print_speed']}\n";
+    $zpl .= "^CI28\n";  // UTF-8 encoding for umlauts
+
+    // Calculate vertical centering for full label (with larger gaps)
+    $totalContentHeight = $tagSize + 5 + $barcodeHeight + 5 + $authorSize + 4 + $titleSize;
+    $verticalOffset = ($height - $totalContentHeight) / 2;
+
+    $tagY = max(3, round($verticalOffset));
+    $barcodeY = $tagY + $tagSize + 5;
+    $authorY = $barcodeY + $barcodeHeight + 5;
+    $titleY = $authorY + $authorSize + 4;
+
+    $blockWidth = $width - 10;
+
+    // Book tag (human readable, centered) - optimized for 38x19mm
+    $zpl .= "^FO5,{$tagY}^A0N,{$tagSize},{$tagSize}^FB{$blockWidth},1,0,C,0^FD{$displayTag}^FS\n";
+
+    // Barcode (Code 128, centered) - optimized for 38x19mm
+    // Calculate approximate barcode width and center it manually
+    $barcodeLength = strlen($barcodeData);
+    $moduleWidth = 2;
+    $estimatedBarcodeWidth = ($barcodeLength * 11 + 35) * $moduleWidth;  // +35 for start/stop/checksum
+    $barcodeX = round(($width - $estimatedBarcodeWidth) / 2);
+    $barcodeX = max(5, $barcodeX);  // Ensure minimum margin
+
+    $zpl .= "^BY{$moduleWidth},{$moduleWidth},{$barcodeHeight}\n";
+    $zpl .= "^FO{$barcodeX},{$barcodeY}^BCN,{$barcodeHeight},N,N,N^FD{$barcodeData}^FS\n";
+
+    // Author (centered) - optimized for 38x19mm
+    $zpl .= "^FO5,{$authorY}^A0N,{$authorSize},{$authorSize}^FB{$blockWidth},1,0,C,0^FD{$authorShort}^FS\n";
+
+    // Title (centered) - optimized for 38x19mm
+    $zpl .= "^FO5,{$titleY}^A0N,{$titleSize},{$titleSize}^FB{$blockWidth},1,0,C,0^FD{$titleShort}^FS\n";
+
+    $zpl .= "^XZ";
+
+    return $zpl;
+}
+
+/**
+ * Generate dual label (spine + full) in one ZPL output
+ * Useful for printing both labels in sequence
+ */
+function generateDualBookLabel($mainCategoryCode, $categoryCode, $number, $author, $title, $config) {
+    $spineLabel = generateSpineLabel($mainCategoryCode, $categoryCode, $number, $config);
+    $fullLabel = generateFullBookLabel($mainCategoryCode, $categoryCode, $number, $author, $title, $config);
+
+    return $spineLabel . "\n" . $fullLabel;
+}

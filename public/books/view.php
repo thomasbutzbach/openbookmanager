@@ -58,7 +58,17 @@ include __DIR__ . '/../../src/Views/layout/header.php';
 <div class="container">
     <div class="page-header">
         <h1><?= e($book['title']) ?></h1>
-        <div>
+        <div style="display: flex; gap: 0.5rem;">
+            <?php if ($config['labels']['enabled']): ?>
+                <div class="dropdown" x-data="{ open: false }">
+                    <button type="button" @click="open = !open" class="btn btn-secondary">🏷️ Print Labels</button>
+                    <div x-show="open" @click.away="open = false" x-transition style="position: absolute; background: white; border: 1px solid #e2e8f0; border-radius: 0.375rem; padding: 0.5rem; margin-top: 0.25rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 10; min-width: 150px;">
+                        <a href="/labels/download.php?type=dual&id=<?= $book['id'] ?>" class="btn btn-sm" style="display: block; margin-bottom: 0.25rem; white-space: nowrap;" download>Both Labels</a>
+                        <a href="/labels/download.php?type=spine&id=<?= $book['id'] ?>" class="btn btn-sm" style="display: block; margin-bottom: 0.25rem; white-space: nowrap;" download>Spine Only</a>
+                        <a href="/labels/download.php?type=full&id=<?= $book['id'] ?>" class="btn btn-sm" style="display: block; white-space: nowrap;" download>Full Only</a>
+                    </div>
+                </div>
+            <?php endif; ?>
             <a href="/books/edit.php?id=<?= $book['id'] ?>" class="btn btn-primary">Edit</a>
             <a href="/books/" class="btn btn-secondary">Back to List</a>
         </div>

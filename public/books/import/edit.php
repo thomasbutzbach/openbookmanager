@@ -47,7 +47,7 @@ try {
     redirect('/books/import/');
 }
 
-// Initialize form data
+// Initialize form data with suggested categories as defaults
 $formData = [
     'title' => $scannedBook['title'] ?? '',
     'subtitle' => $scannedBook['subtitle'] ?? '',
@@ -56,7 +56,8 @@ $formData = [
     'isbn' => $scannedBook['isbn'] ?? '',
     'publisher' => $scannedBook['publisher'] ?? '',
     'language' => $scannedBook['language'] ?? '',
-    'code_category' => '',
+    'code_category' => $scannedBook['suggested_code_category'] ?? '',  // Pre-fill with suggested category
+    'code_maincategory' => $scannedBook['suggested_code_maincategory'] ?? '',
     'authors' => $parsedAuthors
 ];
 
@@ -179,7 +180,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Flash message with link to the imported book
             $bookTitle = htmlspecialchars($formData['title'], ENT_QUOTES, 'UTF-8');
             $viewLink = '/books/view.php?id=' . $bookId;
-            setFlash('success', "Book '{$bookTitle}' imported successfully! <a href='{$viewLink}' style='color: #1e293b; font-weight: 600; text-decoration: underline;'>View details →</a>", true);
+            $labelHint = $config['labels']['enabled'] ? ' Print labels from the book details page.' : '';
+            setFlash('success', "Book '{$bookTitle}' imported successfully! <a href='{$viewLink}' style='color: #1e293b; font-weight: 600; text-decoration: underline;'>View details →</a>{$labelHint}", true);
 
             // Redirect back to import manager for batch processing
             redirect('/books/import/');
@@ -404,7 +406,12 @@ include __DIR__ . '/../../../src/Views/layout/header.php';
                         <select id="main_category" required onchange="updateSubcategories()">
                             <option value="">Select main category...</option>
                             <?php foreach ($categoriesByMain as $mainCat): ?>
-                                <option value="<?= e($mainCat['code']) ?>"><?= e($mainCat['title']) ?> (<?= e($mainCat['code']) ?>)</option>
+                                <option
+                                    value="<?= e($mainCat['code']) ?>"
+                                    <?= ($formData['code_maincategory'] ?? '') === $mainCat['code'] ? 'selected' : '' ?>
+                                >
+                                    <?= e($mainCat['title']) ?> (<?= e($mainCat['code']) ?>)
+                                </option>
                             <?php endforeach; ?>
                         </select>
 
@@ -471,10 +478,16 @@ include __DIR__ . '/../../../src/Views/layout/header.php';
 // Category data from PHP
 const categoriesByMain = <?= json_encode(array_values($categoriesByMain)) ?>;
 
+// Suggested category from Phase 1 (if any)
+const suggestedCategory = '<?= $formData['code_category'] ?? '' ?>';
+
 function updateSubcategories() {
     const mainSelect = document.getElementById('main_category');
     const subSelect = document.getElementById('code_category');
     const mainCode = mainSelect.value;
+
+    // Remember current selection
+    const currentSelection = subSelect.value;
 
     // Clear subcategories
     subSelect.innerHTML = '<option value="">Select category...</option>';
@@ -490,11 +503,31 @@ function updateSubcategories() {
                 const option = document.createElement('option');
                 option.value = cat.code;
                 option.textContent = `${cat.title} (${cat.code})`;
+
+                // Pre-select if it matches suggested category or current selection
+                if (cat.code === suggestedCategory || cat.code === currentSelection) {
+                    option.selected = true;
+                }
+
                 subSelect.appendChild(option);
             });
+
+            // If a category was selected, update tag preview
+            if (subSelect.value) {
+                updateTagPreview();
+            }
         }
     }
 }
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    // If main category is pre-selected, populate subcategories
+    const mainSelect = document.getElementById('main_category');
+    if (mainSelect.value) {
+        updateSubcategories();
+    }
+});
 
 async function updateTagPreview() {
     const categoryCode = document.getElementById('code_category').value;

@@ -22,8 +22,13 @@ $whereClause = 'WHERE 1=1';
 $params = [];
 
 if ($statusFilter && $statusFilter !== 'all') {
-    $whereClause .= ' AND status = ?';
-    $params[] = $statusFilter;
+    if ($statusFilter === 'uncategorized') {
+        // Special filter for books without category suggestion
+        $whereClause .= ' AND suggested_code_category IS NULL AND (status = "pending" OR status = "reviewed")';
+    } else {
+        $whereClause .= ' AND status = ?';
+        $params[] = $statusFilter;
+    }
 }
 
 // Get scanned books
@@ -52,7 +57,9 @@ try {
         SELECT
             COUNT(*) as total,
             COALESCE(SUM(CASE WHEN status = "pending" OR status = "reviewed" THEN 1 ELSE 0 END), 0) as pending,
-            COALESCE(SUM(CASE WHEN status = "skipped" THEN 1 ELSE 0 END), 0) as skipped
+            COALESCE(SUM(CASE WHEN status = "skipped" THEN 1 ELSE 0 END), 0) as skipped,
+            COALESCE(SUM(CASE WHEN suggested_code_category IS NOT NULL THEN 1 ELSE 0 END), 0) as categorized,
+            COALESCE(SUM(CASE WHEN suggested_code_category IS NULL AND (status = "pending" OR status = "reviewed") THEN 1 ELSE 0 END), 0) as uncategorized
         FROM scanned_books
     ');
     $stats = $statsStmt->fetch();
@@ -60,6 +67,51 @@ try {
     // Ensure stats are never null (for empty table)
     $stats['pending'] = $stats['pending'] ?? 0;
     $stats['skipped'] = $stats['skipped'] ?? 0;
+    $stats['categorized'] = $stats['categorized'] ?? 0;
+    $stats['uncategorized'] = $stats['uncategorized'] ?? 0;
+
+    // Get category distribution for planning - hierarchical structure
+    $categoryDistStmt = $db->query('
+        SELECT
+            mc.code as maincat_code,
+            mc.title as maincat_title,
+            c.code as cat_code,
+            c.title as cat_title,
+            COUNT(*) as book_count
+        FROM scanned_books sb
+        JOIN categories c ON sb.suggested_code_category = c.code
+            AND sb.suggested_code_maincategory = c.code_maincategory
+        JOIN maincategories mc ON c.code_maincategory = mc.code
+        WHERE sb.suggested_code_category IS NOT NULL
+        GROUP BY mc.code, c.code, c.code_maincategory
+        ORDER BY book_count DESC
+    ');
+    $rawDistribution = $categoryDistStmt->fetchAll();
+
+    // Group by main category and calculate totals
+    $categoryDistribution = [];
+    foreach ($rawDistribution as $row) {
+        $mainCode = $row['maincat_code'];
+        if (!isset($categoryDistribution[$mainCode])) {
+            $categoryDistribution[$mainCode] = [
+                'code' => $mainCode,
+                'title' => $row['maincat_title'],
+                'total' => 0,
+                'subcategories' => []
+            ];
+        }
+        $categoryDistribution[$mainCode]['total'] += $row['book_count'];
+        $categoryDistribution[$mainCode]['subcategories'][] = [
+            'code' => $row['cat_code'],
+            'title' => $row['cat_title'],
+            'count' => $row['book_count']
+        ];
+    }
+
+    // Sort main categories by total count descending
+    usort($categoryDistribution, function($a, $b) {
+        return $b['total'] - $a['total'];
+    });
 
     // Get categories for import dialog
     $categoriesStmt = $db->query('
@@ -112,11 +164,65 @@ include __DIR__ . '/../../../src/Views/layout/header.php';
                 <div style="font-size: 0.875rem; color: var(--secondary-color); text-transform: uppercase; letter-spacing: 0.05em;">Waiting to Import</div>
             </div>
             <div style="text-align: center;">
+                <div style="font-size: 2.5rem; font-weight: bold; color: var(--info-color);"><?= $stats['categorized'] ?></div>
+                <div style="font-size: 0.875rem; color: var(--secondary-color); text-transform: uppercase; letter-spacing: 0.05em;">Categorized</div>
+            </div>
+            <div style="text-align: center;">
                 <div style="font-size: 2.5rem; font-weight: bold; color: var(--secondary-color);"><?= $stats['skipped'] ?></div>
                 <div style="font-size: 0.875rem; color: var(--secondary-color); text-transform: uppercase; letter-spacing: 0.05em;">Skipped</div>
             </div>
         </div>
     </div>
+
+    <!-- Category Distribution (Planning View) -->
+    <?php if (!empty($categoryDistribution)): ?>
+        <div class="section" style="margin-bottom: 2rem;">
+            <details id="categoryDistribution" style="background: var(--bg-secondary); border-radius: var(--border-radius); padding: 1rem;">
+                <summary style="cursor: pointer; font-weight: 600; color: var(--primary-color); font-size: 1.125rem;">
+                    📊 Planned Distribution by Category (<?= $stats['categorized'] ?> books categorized)
+                </summary>
+                <div style="margin-top: 1.5rem;">
+                    <?php foreach ($categoryDistribution as $mainCat): ?>
+                        <div style="background: white; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem; border-left: 4px solid var(--primary-color);">
+                            <!-- Main Category Header -->
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                                <div>
+                                    <span style="font-weight: 700; font-size: 1rem; color: var(--primary-color);">
+                                        <?= e($mainCat['code']) ?>
+                                    </span>
+                                    <span style="margin-left: 0.5rem; color: var(--text-color);">
+                                        <?= e($mainCat['title']) ?>
+                                    </span>
+                                </div>
+                                <div style="font-size: 1.25rem; font-weight: 700; color: var(--primary-color);">
+                                    <?= $mainCat['total'] ?> <?= $mainCat['total'] === 1 ? 'book' : 'books' ?>
+                                </div>
+                            </div>
+
+                            <!-- Subcategories -->
+                            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 0.5rem; margin-left: 1rem;">
+                                <?php foreach ($mainCat['subcategories'] as $subcat): ?>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: var(--bg-secondary); border-radius: 0.25rem;">
+                                        <div style="font-size: 0.875rem;">
+                                            <span style="font-weight: 600; color: var(--secondary-color);">
+                                                <?= e($subcat['code']) ?>
+                                            </span>
+                                            <span style="margin-left: 0.25rem; color: var(--text-color);">
+                                                <?= e($subcat['title']) ?>
+                                            </span>
+                                        </div>
+                                        <div style="font-weight: 600; color: var(--primary-color); font-size: 0.875rem;">
+                                            <?= $subcat['count'] ?>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </details>
+        </div>
+    <?php endif; ?>
 
     <!-- Filters -->
     <div class="section">
@@ -126,6 +232,7 @@ include __DIR__ . '/../../../src/Views/layout/header.php';
                 <select name="status" id="status" onchange="this.form.submit()">
                     <option value="all" <?= $statusFilter === 'all' ? 'selected' : '' ?>>All</option>
                     <option value="pending" <?= $statusFilter === 'pending' ? 'selected' : '' ?>>Pending (<?= $stats['pending'] ?>)</option>
+                    <option value="uncategorized" <?= $statusFilter === 'uncategorized' ? 'selected' : '' ?>>Not Categorized (<?= $stats['uncategorized'] ?>)</option>
                     <option value="skipped" <?= $statusFilter === 'skipped' ? 'selected' : '' ?>>Skipped (<?= $stats['skipped'] ?>)</option>
                 </select>
             </div>
@@ -205,6 +312,63 @@ include __DIR__ . '/../../../src/Views/layout/header.php';
                                     <strong>ISBN:</strong> <?= e($book['isbn']) ?> •
                                     <strong>Scanned:</strong> <?= date('Y-m-d H:i', strtotime($book['scanned_at'])) ?>
                                 </p>
+
+                                <!-- Quick Category Assignment -->
+                                <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color);" x-data="categorySelector<?= $book['id'] ?>">
+                                    <div style="font-size: 0.875rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--secondary-color);">
+                                        📂 Quick Categorization (Planning Phase)
+                                    </div>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.5rem;">
+                                        <select
+                                            x-model="mainCategory"
+                                            @change="updateSubcategories()"
+                                            style="font-size: 0.875rem; padding: 0.375rem;"
+                                        >
+                                            <option value="">-- Main Category --</option>
+                                            <?php foreach ($categoriesByMain as $mainCode => $mainCat): ?>
+                                                <option
+                                                    value="<?= e($mainCode) ?>"
+                                                    <?= $book['suggested_code_maincategory'] === $mainCode ? 'selected' : '' ?>
+                                                >
+                                                    <?= e($mainCat['code']) ?> - <?= e($mainCat['title']) ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </select>
+
+                                        <select
+                                            x-model="category"
+                                            :disabled="!mainCategory"
+                                            @change="saveCategory()"
+                                            style="font-size: 0.875rem; padding: 0.375rem;"
+                                        >
+                                            <option value="">-- Category --</option>
+                                            <template x-for="cat in subcategories" :key="cat.code">
+                                                <option
+                                                    :value="cat.code"
+                                                    x-text="cat.code + ' - ' + cat.title"
+                                                    :selected="category === cat.code"
+                                                ></option>
+                                            </template>
+                                        </select>
+
+                                        <button
+                                            type="button"
+                                            @click="clearCategory()"
+                                            x-show="mainCategory || category"
+                                            class="btn btn-sm btn-secondary"
+                                            style="padding: 0.375rem 0.75rem; font-size: 0.875rem;"
+                                            title="Clear categorization"
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+                                    <div x-show="saved" x-transition style="margin-top: 0.5rem; font-size: 0.75rem; color: var(--success-color);">
+                                        ✓ Category saved
+                                    </div>
+                                    <div x-show="cleared" x-transition style="margin-top: 0.5rem; font-size: 0.75rem; color: var(--info-color);">
+                                        ✓ Categorization cleared
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- Actions -->
@@ -263,6 +427,131 @@ include __DIR__ . '/../../../src/Views/layout/header.php';
 </div>
 
 <script>
+// Categories data from PHP
+const categoriesByMain = <?= json_encode($categoriesByMain) ?>;
+
+// Create Alpine.js component for each book's category selector
+<?php foreach ($scannedBooks as $book): ?>
+document.addEventListener('alpine:init', () => {
+    Alpine.data('categorySelector<?= $book['id'] ?>', () => ({
+        bookId: <?= $book['id'] ?>,
+        mainCategory: '<?= $book['suggested_code_maincategory'] ?? '' ?>',
+        category: '<?= $book['suggested_code_category'] ?? '' ?>',
+        subcategories: [],
+        saved: false,
+        cleared: false,
+
+        init() {
+            if (this.mainCategory) {
+                this.updateSubcategories();
+            }
+        },
+
+        updateSubcategories() {
+            if (!this.mainCategory) {
+                this.subcategories = [];
+                this.category = '';
+                return;
+            }
+
+            const mainCat = categoriesByMain[this.mainCategory];
+            if (mainCat && mainCat.subcategories) {
+                this.subcategories = mainCat.subcategories;
+
+                // If current category is not in new subcategories, clear it
+                if (this.category && !this.subcategories.find(c => c.code === this.category)) {
+                    this.category = '';
+                }
+            }
+        },
+
+        async saveCategory() {
+            if (!this.mainCategory || !this.category) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/books/import/update-suggested-category.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: this.bookId,
+                        main_category: this.mainCategory,
+                        category: this.category
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    this.saved = true;
+                    setTimeout(() => { this.saved = false; }, 800);
+
+                    // Reload page after a short delay to update statistics
+                    setTimeout(() => { location.reload(); }, 1000);
+                } else {
+                    alert('Error: ' + (data.error || 'Failed to save category'));
+                }
+            } catch (err) {
+                console.error('Failed to save category:', err);
+                alert('Network error');
+            }
+        },
+
+        async clearCategory() {
+            try {
+                const response = await fetch('/books/import/update-suggested-category.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: this.bookId,
+                        main_category: '',
+                        category: ''
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    this.mainCategory = '';
+                    this.category = '';
+                    this.subcategories = [];
+                    this.cleared = true;
+                    setTimeout(() => { this.cleared = false; }, 800);
+
+                    // Reload page after a short delay to update statistics
+                    setTimeout(() => { location.reload(); }, 1000);
+                } else {
+                    alert('Error: ' + (data.error || 'Failed to clear category'));
+                }
+            } catch (err) {
+                console.error('Failed to clear category:', err);
+                alert('Network error');
+            }
+        }
+    }));
+});
+<?php endforeach; ?>
+
+// Remember category distribution open/closed state
+document.addEventListener('DOMContentLoaded', function() {
+    const details = document.getElementById('categoryDistribution');
+    if (details) {
+        // Restore state from localStorage (default: closed)
+        const isOpen = localStorage.getItem('categoryDistributionOpen');
+        if (isOpen === 'true') {
+            details.setAttribute('open', '');
+        } else {
+            details.removeAttribute('open');
+        }
+
+        // Save state when toggled
+        details.addEventListener('toggle', function() {
+            localStorage.setItem('categoryDistributionOpen', details.open);
+        });
+    }
+});
+
 function skipBook(id) {
     fetch('/books/import/skip.php', {
         method: 'POST',
