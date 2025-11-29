@@ -69,20 +69,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $numberInCategory = $currentBook['number_in_category'];
 
-            // If category changed, get next number in new category (proper autoincrement behavior)
+            // If category changed, get next number in new category
             if ($currentBook['code_category'] !== $formData['code_category'] || $currentBook['code_maincategory'] !== $codeMaincategory) {
-                // Increment sequence for new category
-                $stmt = $db->prepare('
-                    INSERT INTO category_sequences (code_category, code_maincategory, next_number)
-                    VALUES (?, ?, 1)
-                    ON DUPLICATE KEY UPDATE next_number = next_number + 1
-                ');
-                $stmt->execute([$formData['code_category'], $codeMaincategory]);
-
-                // Get the new number
+                // Get next number for new category
                 $stmt = $db->prepare('SELECT next_number FROM category_sequences WHERE code_category = ? AND code_maincategory = ?');
                 $stmt->execute([$formData['code_category'], $codeMaincategory]);
-                $numberInCategory = $stmt->fetch()['next_number'];
+                $sequence = $stmt->fetch();
+
+                if ($sequence) {
+                    // Sequence exists, use current number and increment
+                    $numberInCategory = $sequence['next_number'];
+                    $stmt = $db->prepare('UPDATE category_sequences SET next_number = next_number + 1 WHERE code_category = ? AND code_maincategory = ?');
+                    $stmt->execute([$formData['code_category'], $codeMaincategory]);
+                } else {
+                    // First book in this category, start at 1
+                    $numberInCategory = 1;
+                    $stmt = $db->prepare('INSERT INTO category_sequences (code_category, code_maincategory, next_number) VALUES (?, ?, 2)');
+                    $stmt->execute([$formData['code_category'], $codeMaincategory]);
+                }
             }
 
             // Update book
