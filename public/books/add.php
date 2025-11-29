@@ -55,19 +55,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $codeMaincategory = $categoryData['code_maincategory'];
 
-            // Get and increment sequence for this category (proper autoincrement behavior)
-            // Insert or update sequence
-            $stmt = $db->prepare('
-                INSERT INTO category_sequences (code_category, code_maincategory, next_number)
-                VALUES (?, ?, 1)
-                ON DUPLICATE KEY UPDATE next_number = next_number + 1
-            ');
-            $stmt->execute([$formData['code_category'], $codeMaincategory]);
-
-            // Get the new number
+            // Get next number for this category
             $stmt = $db->prepare('SELECT next_number FROM category_sequences WHERE code_category = ? AND code_maincategory = ?');
             $stmt->execute([$formData['code_category'], $codeMaincategory]);
-            $nextNumber = $stmt->fetch()['next_number'];
+            $sequence = $stmt->fetch();
+
+            if ($sequence) {
+                // Sequence exists, use current number and increment
+                $nextNumber = $sequence['next_number'];
+                $stmt = $db->prepare('UPDATE category_sequences SET next_number = next_number + 1 WHERE code_category = ? AND code_maincategory = ?');
+                $stmt->execute([$formData['code_category'], $codeMaincategory]);
+            } else {
+                // First book in this category, start at 1
+                $nextNumber = 1;
+                $stmt = $db->prepare('INSERT INTO category_sequences (code_category, code_maincategory, next_number) VALUES (?, ?, 2)');
+                $stmt->execute([$formData['code_category'], $codeMaincategory]);
+            }
 
             // Insert book
             $stmt = $db->prepare('

@@ -52,7 +52,7 @@ CREATE TABLE `books` (
     `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     `title` VARCHAR(500) NOT NULL,
     `year` INT UNSIGNED NULL,
-    `isbn` VARCHAR(20) NULL,
+    `isbn` VARCHAR(50) NULL,
     `cover_image` VARCHAR(500) NULL,
     `code_category` VARCHAR(2) NOT NULL,
     `number_in_category` INT UNSIGNED NOT NULL,
