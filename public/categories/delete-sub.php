@@ -37,12 +37,25 @@ try {
     $stmt->execute([$code, $category['code_maincategory']]);
     $bookCount = $stmt->fetch()['count'];
 
+    // Check if has suggested books in import manager
+    $stmt = $db->prepare('SELECT COUNT(*) as count FROM scanned_books WHERE suggested_code_category = ? AND suggested_code_maincategory = ?');
+    $stmt->execute([$code, $category['code_maincategory']]);
+    $scannedBookCount = $stmt->fetch()['count'];
+
     // Get books for display
     $books = [];
     if ($bookCount > 0) {
         $stmt = $db->prepare('SELECT * FROM books WHERE code_category = ? AND code_maincategory = ? ORDER BY title LIMIT 10');
         $stmt->execute([$code, $category['code_maincategory']]);
         $books = $stmt->fetchAll();
+    }
+
+    // Get scanned books for display
+    $scannedBooks = [];
+    if ($scannedBookCount > 0) {
+        $stmt = $db->prepare('SELECT * FROM scanned_books WHERE suggested_code_category = ? AND suggested_code_maincategory = ? ORDER BY title LIMIT 10');
+        $stmt->execute([$code, $category['code_maincategory']]);
+        $scannedBooks = $stmt->fetchAll();
     }
 
 } catch (PDOException $e) {
@@ -54,19 +67,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $confirm = $_POST['confirm'] ?? '';
 
     if ($confirm === 'yes') {
-        // Check again if has books
+        // Check again if has books or scanned books
         try {
             // Need to get category info again for code_maincategory
-            $stmt = $db->prepare('SELECT code_maincategory FROM categories WHERE code = ?');
-            $stmt->execute([$code]);
+            $stmt = $db->prepare('SELECT code_maincategory FROM categories WHERE code = ? AND code_maincategory = ?');
+            $stmt->execute([$code, $mainCode]);
             $cat = $stmt->fetch();
 
+            // Check imported books
             $stmt = $db->prepare('SELECT COUNT(*) as count FROM books WHERE code_category = ? AND code_maincategory = ?');
             $stmt->execute([$code, $cat['code_maincategory']]);
             $bookCount = $stmt->fetch()['count'];
 
             if ($bookCount > 0) {
-                setFlash('error', 'Cannot delete subcategory. It has ' . $bookCount . ' book(s). Please remove or reassign the books first.');
+                setFlash('error', 'Cannot delete subcategory. It has ' . $bookCount . ' imported book(s). Please remove or reassign the books first.');
+                redirect('/categories/');
+            }
+
+            // Check scanned books with suggested category
+            $stmt = $db->prepare('SELECT COUNT(*) as count FROM scanned_books WHERE suggested_code_category = ? AND suggested_code_maincategory = ?');
+            $stmt->execute([$code, $cat['code_maincategory']]);
+            $scannedBookCount = $stmt->fetch()['count'];
+
+            if ($scannedBookCount > 0) {
+                setFlash('error', 'Cannot delete subcategory. It is assigned to ' . $scannedBookCount . ' book(s) in the Import Manager. Please clear or change their categories first.');
                 redirect('/categories/');
             }
 
@@ -96,33 +120,60 @@ include __DIR__ . '/../../src/Views/layout/header.php';
     </div>
 
     <div class="section">
-        <?php if ($bookCount > 0): ?>
+        <?php if ($bookCount > 0 || $scannedBookCount > 0): ?>
             <!-- Cannot delete -->
             <div class="alert alert-error">
                 <strong>❌ Cannot Delete Subcategory</strong>
-                <p>This subcategory has <strong><?= $bookCount ?></strong> book(s) and cannot be deleted.</p>
+                <?php if ($bookCount > 0): ?>
+                    <p>This subcategory has <strong><?= $bookCount ?></strong> imported book(s).</p>
+                <?php endif; ?>
+                <?php if ($scannedBookCount > 0): ?>
+                    <p>This subcategory is assigned to <strong><?= $scannedBookCount ?></strong> book(s) in the Import Manager.</p>
+                <?php endif; ?>
                 <p>Please remove or reassign the books first, then try again.</p>
             </div>
 
-            <h3>Books in this Category:</h3>
-            <ul class="simple-list">
-                <?php foreach ($books as $book): ?>
-                    <li>
-                        <a href="/books/view.php?id=<?= $book['id'] ?>">
-                            <?= e($book['title']) ?>
-                            <?php if ($book['year']): ?>
-                                (<?= $book['year'] ?>)
-                            <?php endif; ?>
-                        </a>
-                    </li>
-                <?php endforeach; ?>
-                <?php if ($bookCount > 10): ?>
-                    <li class="text-muted">... and <?= $bookCount - 10 ?> more</li>
-                <?php endif; ?>
-            </ul>
+            <?php if ($bookCount > 0): ?>
+                <h3>Imported Books in this Category:</h3>
+                <ul class="simple-list">
+                    <?php foreach ($books as $book): ?>
+                        <li>
+                            <a href="/books/view.php?id=<?= $book['id'] ?>">
+                                <?= e($book['title']) ?>
+                                <?php if ($book['year']): ?>
+                                    (<?= $book['year'] ?>)
+                                <?php endif; ?>
+                            </a>
+                        </li>
+                    <?php endforeach; ?>
+                    <?php if ($bookCount > 10): ?>
+                        <li class="text-muted">... and <?= $bookCount - 10 ?> more</li>
+                    <?php endif; ?>
+                </ul>
+            <?php endif; ?>
+
+            <?php if ($scannedBookCount > 0): ?>
+                <h3>Books in Import Manager (suggested for this category):</h3>
+                <ul class="simple-list">
+                    <?php foreach ($scannedBooks as $book): ?>
+                        <li>
+                            <a href="/books/import/edit.php?id=<?= $book['id'] ?>">
+                                <?= e($book['title']) ?>
+                                <?php if ($book['authors_raw']): ?>
+                                    - <?= e($book['authors_raw']) ?>
+                                <?php endif; ?>
+                            </a>
+                        </li>
+                    <?php endforeach; ?>
+                    <?php if ($scannedBookCount > 10): ?>
+                        <li class="text-muted">... and <?= $scannedBookCount - 10 ?> more</li>
+                    <?php endif; ?>
+                </ul>
+            <?php endif; ?>
 
             <div style="margin-top: 2rem;">
                 <a href="/categories/" class="btn btn-secondary">Back to Categories</a>
+                <a href="/books/import/" class="btn btn-secondary">Go to Import Manager</a>
             </div>
 
         <?php else: ?>

@@ -115,7 +115,7 @@ include __DIR__ . '/../../src/Views/layout/header.php';
             </div>
         <?php endif; ?>
 
-        <form method="POST" action="/categories/edit-sub.php?code=<?= e($code) ?>">
+        <form method="POST" action="/categories/edit-sub.php?code=<?= e($code) ?>&main=<?= e($mainCode) ?>">
             <div class="form-row">
                 <div class="form-group">
                     <label for="code_maincategory">Main Category *</label>

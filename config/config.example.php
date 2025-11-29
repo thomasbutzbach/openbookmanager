@@ -61,9 +61,34 @@ return [
         'rate_limit' => 1, // Requests per second
     ],
 
-    // Zebra Printer Configuration (for future use)
-    'printer' => [
-        'enabled' => false,
-        'service_url' => 'http://localhost:9100',
+    // Label Printer Configuration
+    'labels' => [
+        'enabled' => true,
+
+        // Label dimensions (adjust based on your label stock)
+        'width_mm' => 50,    // Label width in millimeters
+        'height_mm' => 25,   // Label height in millimeters
+        'dpi' => 203,        // Printer DPI (203 or 300 typical for Zebra)
+
+        // ZPL Settings
+        'darkness' => 15,    // Print darkness (0-30, default 15)
+        'print_speed' => 4,  // Print speed (2-6, default 4)
+
+        // Font sizes (ZPL font sizes)
+        'category_label' => [
+            'code_size' => 40,     // Font size for category code
+            'title_size' => 20,    // Font size for category title
+        ],
+        'spine_label' => [
+            'tag_size' => 35,      // Font size for book tag
+            'barcode_height' => 50, // Barcode height in dots
+        ],
+        'full_label' => [
+            'tag_size' => 25,      // Font size for book tag
+            'barcode_height' => 35, // Barcode height in dots
+            'author_size' => 15,    // Font size for author
+            'title_size' => 15,     // Font size for title
+        ],
     ],
+
 ];

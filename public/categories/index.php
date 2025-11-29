@@ -164,7 +164,7 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                                 <th width="100">Code</th>
                                 <th>Subcategory</th>
                                 <th width="100">Books</th>
-                                <th width="120">Actions</th>
+                                <th width="<?= $config['labels']['enabled'] ? '160' : '120' ?>">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -182,6 +182,12 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                                         <?php endif; ?>
                                     </td>
                                     <td class="actions">
+                                        <?php if ($config['labels']['enabled']): ?>
+                                            <a href="/labels/download.php?type=category&id=<?= e($sub['code']) ?>_<?= e($sub['code_maincategory']) ?>"
+                                               class="btn btn-sm"
+                                               title="Print Label"
+                                               download>🏷️</a>
+                                        <?php endif; ?>
                                         <a href="/categories/edit-sub.php?code=<?= e($sub['code']) ?>&main=<?= e($sub['code_maincategory']) ?>" class="btn btn-sm" title="Edit">✏️</a>
                                         <a href="/categories/delete-sub.php?code=<?= e($sub['code']) ?>&main=<?= e($sub['code_maincategory']) ?>"
                                            class="btn btn-sm btn-danger"
