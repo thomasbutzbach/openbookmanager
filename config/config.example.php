@@ -91,4 +91,11 @@ return [
         ],
     ],
 
+    // Document Upload Configuration (PDF/EPUB)
+    'documents' => [
+        'enabled' => true,           // Enable document uploads
+        'max_size_mb' => 100,        // Maximum file size in megabytes
+        'allowed_types' => ['pdf', 'epub'], // Allowed file extensions
+    ],
+
 ];

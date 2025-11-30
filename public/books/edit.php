@@ -30,7 +30,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'publisher' => trim($_POST['publisher'] ?? ''),
         'language' => trim($_POST['language'] ?? ''),
         'notes' => trim($_POST['notes'] ?? ''),
-        'author_ids' => $_POST['author_ids'] ?? []
+        'author_ids' => $_POST['author_ids'] ?? [],
+        'format_type' => trim($_POST['format_type'] ?? 'physical'),
+        'delete_document' => isset($_POST['delete_document']),
     ];
 
     // Validation
@@ -44,6 +46,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (empty($formData['author_ids'])) {
         $errors[] = 'At least one author is required.';
+    }
+
+    // Validate format_type
+    if (!in_array($formData['format_type'], ['physical', 'digital', 'both'])) {
+        $errors[] = 'Invalid format type.';
     }
 
     // If no errors, update book
@@ -89,49 +96,85 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            // Update book
-            $stmt = $db->prepare('
-                UPDATE books
-                SET title = ?,
-                    year = ?,
-                    isbn = ?,
-                    cover_image = ?,
-                    code_category = ?,
-                    code_maincategory = ?,
-                    number_in_category = ?,
-                    publisher = ?,
-                    language = ?,
-                    notes = ?
-                WHERE id = ?
-            ');
-            $stmt->execute([
-                $formData['title'],
-                $formData['year'],
-                $formData['isbn'] ?: null,
-                $formData['cover_image'] ?: null,
-                $formData['code_category'],
-                $codeMaincategory,
-                $numberInCategory,
-                $formData['publisher'] ?: null,
-                $formData['language'] ?: null,
-                $formData['notes'] ?: null,
-                $bookId
-            ]);
-
-            // Delete existing author relationships
-            $stmt = $db->prepare('DELETE FROM book_author WHERE book_id = ?');
+            // Get current document path before update
+            $stmt = $db->prepare('SELECT document_file FROM books WHERE id = ?');
             $stmt->execute([$bookId]);
+            $currentDoc = $stmt->fetch();
+            $currentDocumentFile = $currentDoc['document_file'] ?? null;
 
-            // Insert new author relationships
-            $stmt = $db->prepare('INSERT INTO book_author (book_id, author_id) VALUES (?, ?)');
-            foreach ($formData['author_ids'] as $authorId) {
-                $stmt->execute([$bookId, $authorId]);
+            // Handle document deletion
+            $documentFile = $currentDocumentFile;
+            if ($formData['delete_document'] && $currentDocumentFile) {
+                deleteBookDocument($currentDocumentFile);
+                $documentFile = null;
             }
 
-            $db->commit();
+            // Handle document upload
+            if (isset($_FILES['document']) && $_FILES['document']['error'] !== UPLOAD_ERR_NO_FILE) {
+                $uploadResult = uploadBookDocument($_FILES['document'], $bookId, $config);
+                if ($uploadResult['success']) {
+                    // Delete old document if exists and different
+                    if ($currentDocumentFile && $currentDocumentFile !== $uploadResult['path']) {
+                        deleteBookDocument($currentDocumentFile);
+                    }
+                    $documentFile = $uploadResult['path'];
+                } else {
+                    $errors[] = $uploadResult['error'];
+                }
+            }
 
-            setFlash('success', 'Book updated successfully!');
-            redirect('/books/view.php?id=' . $bookId);
+            // If upload failed, rollback
+            if (!empty($errors)) {
+                $db->rollBack();
+            } else {
+                // Update book
+                $stmt = $db->prepare('
+                    UPDATE books
+                    SET title = ?,
+                        year = ?,
+                        isbn = ?,
+                        cover_image = ?,
+                        document_file = ?,
+                        format_type = ?,
+                        code_category = ?,
+                        code_maincategory = ?,
+                        number_in_category = ?,
+                        publisher = ?,
+                        language = ?,
+                        notes = ?
+                    WHERE id = ?
+                ');
+                $stmt->execute([
+                    $formData['title'],
+                    $formData['year'],
+                    $formData['isbn'] ?: null,
+                    $formData['cover_image'] ?: null,
+                    $documentFile,
+                    $formData['format_type'],
+                    $formData['code_category'],
+                    $codeMaincategory,
+                    $numberInCategory,
+                    $formData['publisher'] ?: null,
+                    $formData['language'] ?: null,
+                    $formData['notes'] ?: null,
+                    $bookId
+                ]);
+
+                // Delete existing author relationships
+                $stmt = $db->prepare('DELETE FROM book_author WHERE book_id = ?');
+                $stmt->execute([$bookId]);
+
+                // Insert new author relationships
+                $stmt = $db->prepare('INSERT INTO book_author (book_id, author_id) VALUES (?, ?)');
+                foreach ($formData['author_ids'] as $authorId) {
+                    $stmt->execute([$bookId, $authorId]);
+                }
+
+                $db->commit();
+
+                setFlash('success', 'Book updated successfully!');
+                redirect('/books/view.php?id=' . $bookId);
+            }
 
         } catch (PDOException $e) {
             $db->rollBack();
@@ -177,7 +220,8 @@ try {
             'publisher' => $book['publisher'],
             'language' => $book['language'],
             'notes' => $book['notes'],
-            'author_ids' => $currentAuthorIds
+            'author_ids' => $currentAuthorIds,
+            'format_type' => $book['format_type'] ?? 'physical',
         ];
     }
 
@@ -229,7 +273,7 @@ include __DIR__ . '/../../src/Views/layout/header.php';
             </div>
         <?php endif; ?>
 
-        <form method="POST" action="/books/edit.php?id=<?= $bookId ?>" id="bookForm">
+        <form method="POST" action="/books/edit.php?id=<?= $bookId ?>" id="bookForm" enctype="multipart/form-data">
             <div class="form-row">
                 <div class="form-group" style="grid-column: span 2;">
                     <label for="title">Title *</label>
@@ -350,6 +394,37 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                         rows="4"
                         placeholder="Additional notes about this book..."
                     ><?= e($formData['notes'] ?? '') ?></textarea>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="format_type">Format</label>
+                    <select id="format_type" name="format_type">
+                        <option value="physical" <?= ($formData['format_type'] ?? 'physical') === 'physical' ? 'selected' : '' ?>>Physical Book</option>
+                        <option value="digital" <?= ($formData['format_type'] ?? '') === 'digital' ? 'selected' : '' ?>>Digital Only</option>
+                        <option value="both" <?= ($formData['format_type'] ?? '') === 'both' ? 'selected' : '' ?>>Physical & Digital</option>
+                    </select>
+                    <small class="form-help">Is this book physical, digital, or both?</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="document">Document (PDF/EPUB)</label>
+                    <?php if (!empty($book['document_file'])): ?>
+                        <div style="margin-bottom: 0.5rem; padding: 0.5rem; background: var(--bg-color); border-radius: 0.25rem;">
+                            <span>Current: <?= e(basename($book['document_file'])) ?></span>
+                            <label style="margin-left: 1rem; font-weight: normal;">
+                                <input type="checkbox" name="delete_document" value="1"> Delete
+                            </label>
+                        </div>
+                    <?php endif; ?>
+                    <input
+                        type="file"
+                        id="document"
+                        name="document"
+                        accept=".pdf,.epub"
+                    >
+                    <small class="form-help">PDF or EPUB, max <?= $config['documents']['max_size_mb'] ?? 100 ?> MB<?= !empty($book['document_file']) ? ' (replaces existing)' : '' ?></small>
                 </div>
             </div>
 

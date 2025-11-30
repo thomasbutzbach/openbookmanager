@@ -112,10 +112,30 @@ include __DIR__ . '/../../src/Views/layout/header.php';
         <p class="text-muted">Create complete backups of your book collection for migration or archival purposes.</p>
 
         <div class="settings-grid">
+            <!-- Full Backup with Files (ZIP) -->
+            <div class="settings-card" style="border-color: var(--primary-color);">
+                <div class="settings-card-icon">📦</div>
+                <h3>Full Backup with Files (ZIP)</h3>
+                <p>Complete backup including database AND all uploaded files (covers, PDFs, EPUBs). <strong>Recommended for archival.</strong></p>
+
+                <div class="settings-stats">
+                    <strong>What will be exported:</strong>
+                    <ul>
+                        <li>All database data (as JSON)</li>
+                        <li>Cover images (uploads/covers/)</li>
+                        <li>PDF/EPUB documents (uploads/documents/)</li>
+                    </ul>
+                </div>
+
+                <a href="/exports/backup-full.php" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">
+                    📥 Download Full Backup (ZIP)
+                </a>
+            </div>
+
             <!-- Full Backup (SQL) -->
             <div class="settings-card">
                 <div class="settings-card-icon">💾</div>
-                <h3>Full Backup (SQL)</h3>
+                <h3>Database Backup (SQL)</h3>
                 <p>Complete database dump as SQL file. Perfect for restoring your entire collection or migrating to another server.</p>
 
                 <div class="settings-stats">
@@ -131,7 +151,7 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                     </ul>
                 </div>
 
-                <a href="/exports/backup-sql.php" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">
+                <a href="/exports/backup-sql.php" class="btn btn-secondary" style="width: 100%; margin-top: 1rem;">
                     📥 Download SQL Backup
                 </a>
             </div>
@@ -139,7 +159,7 @@ include __DIR__ . '/../../src/Views/layout/header.php';
             <!-- Full Export (JSON) -->
             <div class="settings-card">
                 <div class="settings-card-icon">📋</div>
-                <h3>Full Export (JSON)</h3>
+                <h3>Data Export (JSON)</h3>
                 <p>Human-readable JSON export with all data and relationships. Can be edited before re-import.</p>
 
                 <div class="settings-stats">
@@ -155,7 +175,7 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                     </ul>
                 </div>
 
-                <a href="/exports/backup-json.php" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">
+                <a href="/exports/backup-json.php" class="btn btn-secondary" style="width: 100%; margin-top: 1rem;">
                     📥 Download JSON Export
                 </a>
             </div>

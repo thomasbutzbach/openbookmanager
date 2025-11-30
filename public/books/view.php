@@ -129,6 +129,29 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                     </div>
 
                     <div class="detail-item">
+                        <label>Format</label>
+                        <div>
+                            <?php
+                            $formatType = $book['format_type'] ?? 'physical';
+                            $formatIcon = formatTypeIcon($formatType);
+                            $formatLabel = formatTypeLabel($formatType);
+                            ?>
+                            <?= $formatIcon ? $formatIcon . ' ' : '' ?><?= e($formatLabel) ?>
+                        </div>
+                    </div>
+
+                    <?php if (!empty($book['document_file'])): ?>
+                        <div class="detail-item">
+                            <label>Digital Copy</label>
+                            <div>
+                                <a href="/books/download.php?id=<?= $book['id'] ?>" class="btn btn-sm btn-secondary">
+                                    📥 Download <?= strtoupper(pathinfo($book['document_file'], PATHINFO_EXTENSION)) ?>
+                                </a>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+
+                    <div class="detail-item">
                         <label>Added</label>
                         <div><?= formatDateTime($book['created_at']) ?></div>
                     </div>

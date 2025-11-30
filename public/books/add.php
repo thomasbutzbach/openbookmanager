@@ -23,7 +23,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'publisher' => trim($_POST['publisher'] ?? ''),
         'language' => trim($_POST['language'] ?? ''),
         'notes' => trim($_POST['notes'] ?? ''),
-        'author_ids' => $_POST['author_ids'] ?? []
+        'author_ids' => $_POST['author_ids'] ?? [],
+        'format_type' => trim($_POST['format_type'] ?? 'physical'),
     ];
 
     // Validation
@@ -37,6 +38,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (empty($formData['author_ids'])) {
         $errors[] = 'At least one author is required.';
+    }
+
+    // Validate format_type
+    if (!in_array($formData['format_type'], ['physical', 'digital', 'both'])) {
+        $errors[] = 'Invalid format type.';
     }
 
     // If no errors, insert book
@@ -74,14 +80,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Insert book
             $stmt = $db->prepare('
-                INSERT INTO books (title, year, isbn, cover_image, code_category, code_maincategory, number_in_category, publisher, language, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO books (title, year, isbn, cover_image, document_file, format_type, code_category, code_maincategory, number_in_category, publisher, language, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ');
             $stmt->execute([
                 $formData['title'],
                 $formData['year'],
                 $formData['isbn'] ?: null,
                 $formData['cover_image'] ?: null,
+                null, // document_file - will be updated after upload
+                $formData['format_type'],
                 $formData['code_category'],
                 $codeMaincategory,
                 $nextNumber,
@@ -92,16 +100,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $bookId = $db->lastInsertId();
 
-            // Insert author relationships
-            $stmt = $db->prepare('INSERT INTO book_author (book_id, author_id) VALUES (?, ?)');
-            foreach ($formData['author_ids'] as $authorId) {
-                $stmt->execute([$bookId, $authorId]);
+            // Handle document upload
+            $documentFile = null;
+            if (isset($_FILES['document']) && $_FILES['document']['error'] !== UPLOAD_ERR_NO_FILE) {
+                $uploadResult = uploadBookDocument($_FILES['document'], $bookId, $config);
+                if ($uploadResult['success']) {
+                    $documentFile = $uploadResult['path'];
+                    // Update book with document path
+                    $stmt = $db->prepare('UPDATE books SET document_file = ? WHERE id = ?');
+                    $stmt->execute([$documentFile, $bookId]);
+                } else {
+                    // Upload failed - rollback and show error
+                    $db->rollBack();
+                    $errors[] = $uploadResult['error'];
+                }
             }
 
-            $db->commit();
+            // Only proceed if no upload errors
+            if (empty($errors)) {
+                // Insert author relationships
+                $stmt = $db->prepare('INSERT INTO book_author (book_id, author_id) VALUES (?, ?)');
+                foreach ($formData['author_ids'] as $authorId) {
+                    $stmt->execute([$bookId, $authorId]);
+                }
 
-            setFlash('success', 'Book added successfully!');
-            redirect('/books/view.php?id=' . $bookId);
+                $db->commit();
+
+                setFlash('success', 'Book added successfully!');
+                redirect('/books/view.php?id=' . $bookId);
+            }
 
         } catch (PDOException $e) {
             $db->rollBack();
@@ -149,7 +176,7 @@ include __DIR__ . '/../../src/Views/layout/header.php';
             </div>
         <?php endif; ?>
 
-        <form method="POST" action="/books/add.php" id="bookForm">
+        <form method="POST" action="/books/add.php" id="bookForm" enctype="multipart/form-data">
             <div class="form-row">
                 <div class="form-group" style="grid-column: span 2;">
                     <label for="title">Title *</label>
@@ -273,6 +300,29 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                         rows="4"
                         placeholder="Additional notes about this book..."
                     ><?= e($formData['notes'] ?? '') ?></textarea>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="format_type">Format</label>
+                    <select id="format_type" name="format_type">
+                        <option value="physical" <?= ($formData['format_type'] ?? 'physical') === 'physical' ? 'selected' : '' ?>>Physical Book</option>
+                        <option value="digital" <?= ($formData['format_type'] ?? '') === 'digital' ? 'selected' : '' ?>>Digital Only</option>
+                        <option value="both" <?= ($formData['format_type'] ?? '') === 'both' ? 'selected' : '' ?>>Physical & Digital</option>
+                    </select>
+                    <small class="form-help">Is this book physical, digital, or both?</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="document">Document (PDF/EPUB)</label>
+                    <input
+                        type="file"
+                        id="document"
+                        name="document"
+                        accept=".pdf,.epub"
+                    >
+                    <small class="form-help">PDF or EPUB, max <?= $config['documents']['max_size_mb'] ?? 100 ?> MB</small>
                 </div>
             </div>
 
