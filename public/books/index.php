@@ -283,6 +283,9 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                             </td>
                             <td>
                                 <strong><?= e($book['title']) ?></strong>
+                                <?php if (!empty($book['document_file'])): ?>
+                                    <span title="Digital copy available">💾</span>
+                                <?php endif; ?>
                                 <?php if ($book['isbn']): ?>
                                     <br><small>ISBN: <?= e($book['isbn']) ?></small>
                                 <?php endif; ?>

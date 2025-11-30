@@ -44,6 +44,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($confirm === 'yes') {
         try {
+            // Delete associated document file if exists
+            if (!empty($book['document_file'])) {
+                deleteBookDocument($book['document_file']);
+            }
+
             // Delete book (cascade will delete book_author entries)
             $stmt = $db->prepare('DELETE FROM books WHERE id = ?');
             $stmt->execute([$bookId]);

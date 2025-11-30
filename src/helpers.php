@@ -895,3 +895,205 @@ function generateDualBookLabel($mainCategoryCode, $categoryCode, $number, $autho
 
     return $spineLabel . "\n" . $fullLabel;
 }
+
+// ============================================================================
+// Document Upload Functions
+// ============================================================================
+
+/**
+ * Get the documents upload directory path
+ */
+function getDocumentsDir(): string {
+    return __DIR__ . '/../public/uploads/documents/';
+}
+
+/**
+ * Get allowed document MIME types
+ */
+function getAllowedDocumentMimeTypes(): array {
+    return [
+        'pdf' => 'application/pdf',
+        'epub' => 'application/epub+zip',
+    ];
+}
+
+/**
+ * Get maximum document size in bytes
+ */
+function getMaxDocumentSize($config): int {
+    $maxMb = $config['documents']['max_size_mb'] ?? 100;
+    return $maxMb * 1024 * 1024;
+}
+
+/**
+ * Validate and upload a book document (PDF or EPUB)
+ *
+ * @param array $file The $_FILES['document'] array
+ * @param int $bookId The book ID for naming the file
+ * @param array $config Application config
+ * @return array ['success' => bool, 'path' => string|null, 'error' => string|null]
+ */
+function uploadBookDocument(array $file, int $bookId, array $config): array {
+    // Check if documents feature is enabled
+    if (!($config['documents']['enabled'] ?? true)) {
+        return ['success' => false, 'path' => null, 'error' => 'Document uploads are disabled.'];
+    }
+
+    // Check for upload errors
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        $errorMessages = [
+            UPLOAD_ERR_INI_SIZE => 'File exceeds the upload_max_filesize directive.',
+            UPLOAD_ERR_FORM_SIZE => 'File exceeds the MAX_FILE_SIZE directive.',
+            UPLOAD_ERR_PARTIAL => 'File was only partially uploaded.',
+            UPLOAD_ERR_NO_FILE => 'No file was uploaded.',
+            UPLOAD_ERR_NO_TMP_DIR => 'Missing temporary folder.',
+            UPLOAD_ERR_CANT_WRITE => 'Failed to write file to disk.',
+            UPLOAD_ERR_EXTENSION => 'A PHP extension stopped the upload.',
+        ];
+        $error = $errorMessages[$file['error']] ?? 'Unknown upload error.';
+        return ['success' => false, 'path' => null, 'error' => $error];
+    }
+
+    // Check file size
+    $maxSize = getMaxDocumentSize($config);
+    if ($file['size'] > $maxSize) {
+        $maxMb = $config['documents']['max_size_mb'] ?? 100;
+        return ['success' => false, 'path' => null, 'error' => "File exceeds maximum size of {$maxMb} MB."];
+    }
+
+    // Get file extension
+    $originalName = $file['name'];
+    $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+
+    // Validate extension
+    $allowedTypes = $config['documents']['allowed_types'] ?? ['pdf', 'epub'];
+    if (!in_array($extension, $allowedTypes)) {
+        $allowed = implode(', ', $allowedTypes);
+        return ['success' => false, 'path' => null, 'error' => "Invalid file type. Allowed: {$allowed}."];
+    }
+
+    // Validate MIME type
+    $allowedMimes = getAllowedDocumentMimeTypes();
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mimeType = finfo_file($finfo, $file['tmp_name']);
+    finfo_close($finfo);
+
+    $expectedMime = $allowedMimes[$extension] ?? null;
+    if ($mimeType !== $expectedMime) {
+        return ['success' => false, 'path' => null, 'error' => 'File content does not match its extension.'];
+    }
+
+    // Ensure upload directory exists
+    $uploadsDir = getDocumentsDir();
+    if (!is_dir($uploadsDir)) {
+        if (!mkdir($uploadsDir, 0755, true)) {
+            return ['success' => false, 'path' => null, 'error' => 'Failed to create upload directory.'];
+        }
+    }
+
+    // Generate filename based on book ID
+    $filename = $bookId . '.' . $extension;
+    $fullPath = $uploadsDir . $filename;
+    $relativePath = '/uploads/documents/' . $filename;
+
+    // Delete existing document if present (different extension)
+    deleteBookDocumentByBookId($bookId);
+
+    // Move uploaded file
+    if (!move_uploaded_file($file['tmp_name'], $fullPath)) {
+        return ['success' => false, 'path' => null, 'error' => 'Failed to save uploaded file.'];
+    }
+
+    return ['success' => true, 'path' => $relativePath, 'error' => null];
+}
+
+/**
+ * Delete a book document by its relative path
+ *
+ * @param string|null $relativePath The relative path stored in database
+ * @return bool True if deleted or didn't exist, false on error
+ */
+function deleteBookDocument(?string $relativePath): bool {
+    if (empty($relativePath)) {
+        return true;
+    }
+
+    // Security: ensure path is within documents directory
+    if (strpos($relativePath, '/uploads/documents/') !== 0) {
+        return false;
+    }
+
+    $filename = basename($relativePath);
+    $fullPath = getDocumentsDir() . $filename;
+
+    if (file_exists($fullPath)) {
+        return unlink($fullPath);
+    }
+
+    return true;
+}
+
+/**
+ * Delete any existing document for a book ID (checks both pdf and epub)
+ *
+ * @param int $bookId The book ID
+ * @return bool True if deleted or didn't exist
+ */
+function deleteBookDocumentByBookId(int $bookId): bool {
+    $uploadsDir = getDocumentsDir();
+    $extensions = ['pdf', 'epub'];
+
+    foreach ($extensions as $ext) {
+        $path = $uploadsDir . $bookId . '.' . $ext;
+        if (file_exists($path)) {
+            unlink($path);
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Get the MIME type for a document based on its path
+ *
+ * @param string $relativePath The relative path to the document
+ * @return string|null The MIME type or null if unknown
+ */
+function getDocumentMimeType(string $relativePath): ?string {
+    $extension = strtolower(pathinfo($relativePath, PATHINFO_EXTENSION));
+    $mimeTypes = getAllowedDocumentMimeTypes();
+
+    return $mimeTypes[$extension] ?? null;
+}
+
+/**
+ * Get a human-readable label for format type
+ *
+ * @param string $formatType The format type (physical, digital, both)
+ * @return string Human-readable label
+ */
+function formatTypeLabel(string $formatType): string {
+    $labels = [
+        'physical' => 'Physical Book',
+        'digital' => 'Digital Only',
+        'both' => 'Physical & Digital',
+    ];
+
+    return $labels[$formatType] ?? 'Unknown';
+}
+
+/**
+ * Get an icon for format type
+ *
+ * @param string $formatType The format type (physical, digital, both)
+ * @return string Emoji icon
+ */
+function formatTypeIcon(string $formatType): string {
+    $icons = [
+        'physical' => '',
+        'digital' => '💾',
+        'both' => '💾',
+    ];
+
+    return $icons[$formatType] ?? '';
+}
