@@ -270,8 +270,9 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                 <tbody>
                     <?php foreach ($books as $book): ?>
                         <tr>
-                            <td>
-                                <code><?= generateBookTag($book['maincat_code'], $book['code_category'], $book['number_in_category']) ?></code>
+                            <td style="white-space: nowrap;">
+                                <code><?= e($book['maincat_code']) ?> <?= e($book['code_category']) ?></code><br>
+                                <code><?= str_pad($book['number_in_category'], 4, '0', STR_PAD_LEFT) ?></code>
                             </td>
                             <td>
                                 <?php if ($book['cover_image']): ?>
