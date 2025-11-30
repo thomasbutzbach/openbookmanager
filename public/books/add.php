@@ -13,13 +13,20 @@ $formData = [];
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Parse combined category value (format: "maincategory|category")
+    $categoryCombined = trim($_POST['category_combined'] ?? '');
+    $categoryParts = explode('|', $categoryCombined);
+    $codeMaincategory = $categoryParts[0] ?? '';
+    $codeCategory = $categoryParts[1] ?? '';
+
     // Get form data
     $formData = [
         'title' => trim($_POST['title'] ?? ''),
         'year' => !empty($_POST['year']) ? (int)$_POST['year'] : null,
         'isbn' => trim($_POST['isbn'] ?? ''),
         'cover_image' => trim($_POST['cover_image'] ?? ''),
-        'code_category' => trim($_POST['code_category'] ?? ''),
+        'code_category' => $codeCategory,
+        'code_maincategory' => $codeMaincategory,
         'publisher' => trim($_POST['publisher'] ?? ''),
         'language' => trim($_POST['language'] ?? ''),
         'notes' => trim($_POST['notes'] ?? ''),
@@ -32,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = 'Title is required.';
     }
 
-    if (empty($formData['code_category'])) {
+    if (empty($formData['code_category']) || empty($formData['code_maincategory'])) {
         $errors[] = 'Category is required.';
     }
 
@@ -50,32 +57,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $db->beginTransaction();
 
-            // Get main category for the selected category
-            $stmt = $db->prepare('SELECT code_maincategory FROM categories WHERE code = ?');
-            $stmt->execute([$formData['code_category']]);
+            // Verify the category exists (with composite key)
+            $stmt = $db->prepare('SELECT code, code_maincategory FROM categories WHERE code = ? AND code_maincategory = ?');
+            $stmt->execute([$formData['code_category'], $formData['code_maincategory']]);
             $categoryData = $stmt->fetch();
 
             if (!$categoryData) {
                 throw new Exception('Invalid category selected');
             }
 
-            $codeMaincategory = $categoryData['code_maincategory'];
-
             // Get next number for this category
             $stmt = $db->prepare('SELECT next_number FROM category_sequences WHERE code_category = ? AND code_maincategory = ?');
-            $stmt->execute([$formData['code_category'], $codeMaincategory]);
+            $stmt->execute([$formData['code_category'], $formData['code_maincategory']]);
             $sequence = $stmt->fetch();
 
             if ($sequence) {
                 // Sequence exists, use current number and increment
                 $nextNumber = $sequence['next_number'];
                 $stmt = $db->prepare('UPDATE category_sequences SET next_number = next_number + 1 WHERE code_category = ? AND code_maincategory = ?');
-                $stmt->execute([$formData['code_category'], $codeMaincategory]);
+                $stmt->execute([$formData['code_category'], $formData['code_maincategory']]);
             } else {
                 // First book in this category, start at 1
                 $nextNumber = 1;
                 $stmt = $db->prepare('INSERT INTO category_sequences (code_category, code_maincategory, next_number) VALUES (?, ?, 2)');
-                $stmt->execute([$formData['code_category'], $codeMaincategory]);
+                $stmt->execute([$formData['code_category'], $formData['code_maincategory']]);
             }
 
             // Insert book
@@ -91,7 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 null, // document_file - will be updated after upload
                 $formData['format_type'],
                 $formData['code_category'],
-                $codeMaincategory,
+                $formData['code_maincategory'],
                 $nextNumber,
                 $formData['publisher'] ?: null,
                 $formData['language'] ?: null,
@@ -210,13 +215,17 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                 </div>
 
                 <div class="form-group">
-                    <label for="code_category">Category *</label>
-                    <select id="code_category" name="code_category" required>
+                    <label for="category_combined">Category *</label>
+                    <select id="category_combined" name="category_combined" required>
                         <option value="">-- Select Category --</option>
                         <?php foreach ($categories as $cat): ?>
+                            <?php
+                            $combinedValue = $cat['code_maincategory'] . '|' . $cat['code'];
+                            $currentCombined = ($formData['code_maincategory'] ?? '') . '|' . ($formData['code_category'] ?? '');
+                            ?>
                             <option
-                                value="<?= e($cat['code']) ?>"
-                                <?= ($formData['code_category'] ?? '') === $cat['code'] ? 'selected' : '' ?>
+                                value="<?= e($combinedValue) ?>"
+                                <?= $currentCombined === $combinedValue ? 'selected' : '' ?>
                             >
                                 <?= e($cat['maincat_title']) ?> > <?= e($cat['title']) ?> (<?= e($cat['maincat_code']) ?> <?= e($cat['code']) ?>)
                             </option>
