@@ -13,6 +13,8 @@ $statusFilter = $_GET['status'] ?? 'pending';
 $sortBy = $_GET['sort'] ?? 'scanned_at';
 $sortOrder = $_GET['order'] ?? 'DESC';
 $currentPage = $_GET['page'] ?? 1;
+$searchQuery = trim($_GET['q'] ?? '');
+$categoryFilter = $_GET['cat'] ?? '';  // Format: "MAINCODE_SUBCODE" e.g. "SF_PH"
 
 // Get pagination settings
 $itemsPerPage = $config['pagination']['books'] ?? 50;
@@ -28,6 +30,30 @@ if ($statusFilter && $statusFilter !== 'all') {
     } else {
         $whereClause .= ' AND status = ?';
         $params[] = $statusFilter;
+    }
+}
+
+// Search filter
+if ($searchQuery !== '') {
+    $whereClause .= ' AND (title LIKE ? OR authors_raw LIKE ? OR isbn LIKE ?)';
+    $searchPattern = '%' . $searchQuery . '%';
+    $params[] = $searchPattern;
+    $params[] = $searchPattern;
+    $params[] = $searchPattern;
+}
+
+// Category filter
+if ($categoryFilter !== '') {
+    if (strpos($categoryFilter, '_') !== false) {
+        // Subcategory filter: "MAINCODE_SUBCODE"
+        [$filterMainCode, $filterSubCode] = explode('_', $categoryFilter, 2);
+        $whereClause .= ' AND suggested_code_maincategory = ? AND suggested_code_category = ?';
+        $params[] = $filterMainCode;
+        $params[] = $filterSubCode;
+    } else {
+        // Main category filter: "MAINCODE"
+        $whereClause .= ' AND suggested_code_maincategory = ?';
+        $params[] = $categoryFilter;
     }
 }
 
@@ -174,35 +200,62 @@ include __DIR__ . '/../../../src/Views/layout/header.php';
         </div>
     </div>
 
+    <!-- Active Category Filter Banner -->
+    <?php if ($categoryFilter): ?>
+        <?php
+        // Parse the filter to display the category name
+        $filterDisplay = $categoryFilter;
+        if (strpos($categoryFilter, '_') !== false) {
+            [$fMain, $fSub] = explode('_', $categoryFilter, 2);
+            $filterDisplay = "$fMain $fSub";
+        }
+        ?>
+        <div class="section" style="margin-bottom: 1rem;">
+            <div style="background: var(--primary-color); color: white; padding: 0.75rem 1rem; border-radius: var(--border-radius); display: flex; justify-content: space-between; align-items: center;">
+                <span>
+                    <strong>📂 Filtering by category:</strong> <?= e($filterDisplay) ?>
+                </span>
+                <a href="/books/import/?status=<?= e($statusFilter) ?>&sort=<?= e($sortBy) ?>&order=<?= e($sortOrder) ?><?= $searchQuery ? '&q=' . urlencode($searchQuery) : '' ?>"
+                   style="color: white; text-decoration: none; background: rgba(255,255,255,0.2); padding: 0.25rem 0.75rem; border-radius: 0.25rem;">
+                    ✕ Show all
+                </a>
+            </div>
+        </div>
+    <?php endif; ?>
+
     <!-- Category Distribution (Planning View) -->
     <?php if (!empty($categoryDistribution)): ?>
         <div class="section" style="margin-bottom: 2rem;">
-            <details id="categoryDistribution" style="background: var(--bg-secondary); border-radius: var(--border-radius); padding: 1rem;">
+            <details id="categoryDistribution" style="background: var(--bg-secondary); border-radius: var(--border-radius); padding: 1rem;"<?= $categoryFilter ? '' : '' ?>>
                 <summary style="cursor: pointer; font-weight: 600; color: var(--primary-color); font-size: 1.125rem;">
-                    📊 Planned Distribution by Category (<?= $stats['categorized'] ?> books categorized)
+                    📊 Planned Distribution by Category (<?= $stats['categorized'] ?> books categorized) — click a category to filter
                 </summary>
                 <div style="margin-top: 1.5rem;">
                     <?php foreach ($categoryDistribution as $mainCat): ?>
                         <div style="background: white; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem; border-left: 4px solid var(--primary-color);">
                             <!-- Main Category Header -->
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
-                                <div>
+                                <a href="/books/import/?status=all&sort=<?= e($sortBy) ?>&order=<?= e($sortOrder) ?>&cat=<?= e($mainCat['code']) ?>"
+                                   style="text-decoration: none; flex: 1;">
                                     <span style="font-weight: 700; font-size: 1rem; color: var(--primary-color);">
                                         <?= e($mainCat['code']) ?>
                                     </span>
                                     <span style="margin-left: 0.5rem; color: var(--text-color);">
                                         <?= e($mainCat['title']) ?>
                                     </span>
-                                </div>
-                                <div style="font-size: 1.25rem; font-weight: 700; color: var(--primary-color);">
+                                </a>
+                                <a href="/books/import/?status=all&sort=<?= e($sortBy) ?>&order=<?= e($sortOrder) ?>&cat=<?= e($mainCat['code']) ?>"
+                                   style="font-size: 1.25rem; font-weight: 700; color: var(--primary-color); text-decoration: none;">
                                     <?= $mainCat['total'] ?> <?= $mainCat['total'] === 1 ? 'book' : 'books' ?>
-                                </div>
+                                </a>
                             </div>
 
                             <!-- Subcategories -->
                             <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 0.5rem; margin-left: 1rem;">
                                 <?php foreach ($mainCat['subcategories'] as $subcat): ?>
-                                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: var(--bg-secondary); border-radius: 0.25rem;">
+                                    <a href="/books/import/?status=all&sort=<?= e($sortBy) ?>&order=<?= e($sortOrder) ?>&cat=<?= e($mainCat['code']) ?>_<?= e($subcat['code']) ?>"
+                                       style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: var(--bg-secondary); border-radius: 0.25rem; text-decoration: none; transition: background 0.15s;"
+                                       onmouseover="this.style.background='var(--border-color)'" onmouseout="this.style.background='var(--bg-secondary)'">
                                         <div style="font-size: 0.875rem;">
                                             <span style="font-weight: 600; color: var(--secondary-color);">
                                                 <?= e($subcat['code']) ?>
@@ -214,7 +267,7 @@ include __DIR__ . '/../../../src/Views/layout/header.php';
                                         <div style="font-weight: 600; color: var(--primary-color); font-size: 0.875rem;">
                                             <?= $subcat['count'] ?>
                                         </div>
-                                    </div>
+                                    </a>
                                 <?php endforeach; ?>
                             </div>
                         </div>
@@ -224,9 +277,53 @@ include __DIR__ . '/../../../src/Views/layout/header.php';
         </div>
     <?php endif; ?>
 
-    <!-- Filters -->
+    <!-- Search and Filters -->
     <div class="section">
+        <!-- Search Bar -->
+        <div style="margin-bottom: 1rem;">
+            <form method="GET" action="/books/import/" style="position: relative;">
+                <!-- Preserve other filters -->
+                <input type="hidden" name="status" value="<?= e($statusFilter) ?>">
+                <input type="hidden" name="sort" value="<?= e($sortBy) ?>">
+                <input type="hidden" name="order" value="<?= e($sortOrder) ?>">
+                <?php if ($categoryFilter): ?>
+                    <input type="hidden" name="cat" value="<?= e($categoryFilter) ?>">
+                <?php endif; ?>
+
+                <input
+                    type="text"
+                    name="q"
+                    value="<?= e($searchQuery) ?>"
+                    placeholder="Search by title, author, or ISBN..."
+                    style="width: 100%; padding: 0.75rem 1rem 0.75rem 2.5rem; font-size: 1rem; border: 2px solid var(--border-color); border-radius: var(--border-radius);"
+                    autofocus
+                >
+                <span style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--secondary-color);">🔍</span>
+                <?php if ($searchQuery): ?>
+                    <a
+                        href="/books/import/?status=<?= e($statusFilter) ?>&sort=<?= e($sortBy) ?>&order=<?= e($sortOrder) ?><?= $categoryFilter ? '&cat=' . urlencode($categoryFilter) : '' ?>"
+                        style="position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--secondary-color); font-size: 1.25rem; text-decoration: none;"
+                        title="Clear search"
+                    >✕</a>
+                <?php endif; ?>
+            </form>
+            <?php if ($searchQuery): ?>
+                <div style="margin-top: 0.5rem; font-size: 0.875rem; color: var(--secondary-color);">
+                    Found <?= $totalBooks ?> book(s) matching "<?= e($searchQuery) ?>"
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- Filters -->
         <form method="GET" action="/books/import/" style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+            <!-- Preserve search query and category filter -->
+            <?php if ($searchQuery): ?>
+                <input type="hidden" name="q" value="<?= e($searchQuery) ?>">
+            <?php endif; ?>
+            <?php if ($categoryFilter): ?>
+                <input type="hidden" name="cat" value="<?= e($categoryFilter) ?>">
+            <?php endif; ?>
+
             <div>
                 <label for="status">Status:</label>
                 <select name="status" id="status" onchange="this.form.submit()">
@@ -412,9 +509,11 @@ include __DIR__ . '/../../../src/Views/layout/header.php';
             </div>
 
             <?php
-            // Build pagination URL preserving all filters
+            // Build pagination URL preserving all filters including search and category
             $paginationUrl = '/books/import/?';
             $urlParams = [];
+            if ($searchQuery) $urlParams[] = 'q=' . urlencode($searchQuery);
+            if ($categoryFilter) $urlParams[] = 'cat=' . urlencode($categoryFilter);
             if ($statusFilter !== 'pending') $urlParams[] = 'status=' . urlencode($statusFilter);
             if ($sortBy !== 'scanned_at') $urlParams[] = 'sort=' . urlencode($sortBy);
             if ($sortOrder !== 'DESC') $urlParams[] = 'order=' . urlencode($sortOrder);
