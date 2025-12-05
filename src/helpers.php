@@ -713,11 +713,13 @@ function generateCategoryLabel($mainCategoryCode, $categoryCode, $categoryTitle,
     }
 
     // Calculate vertical centering (always: code + 3 title lines)
+    // Add top margin to prevent content from being cut off at the top edge
+    $topMargin = 20;  // Minimum margin from top edge in dots (~2.5mm at 203 DPI)
     $lineSpacing = $titleSize + 2;
     $totalContentHeight = $codeSize + 6 + (3 * $lineSpacing);  // Code + gap + 3 title lines
     $verticalOffset = ($height - $totalContentHeight) / 2;
 
-    $codeY = max(2, round($verticalOffset));  // Don't go below Y=2
+    $codeY = max($topMargin, round($verticalOffset));  // Ensure minimum top margin
     $titleStartY = $codeY + $codeSize + 6;  // 6 pixels gap between code and title
 
     // Category code (centered horizontally and vertically) - optimized for 38x19mm
