@@ -1,0 +1,62 @@
+services:
+  # Apache + PHP
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: openbookmanager_web
+    ports:
+      - "8000:80"
+    volumes:
+      - .:/var/www/html
+      - ./docker/php/php.ini:/usr/local/etc/php/conf.d/custom.ini
+    environment:
+      - APACHE_DOCUMENT_ROOT=/var/www/html/public
+    depends_on:
+      - db
+    networks:
+      - openbookmanager_network
+    restart: unless-stopped
+
+  # MariaDB
+  db:
+    image: mariadb:11.2
+    container_name: openbookmanager_db
+    ports:
+      - "3307:3306"  # Expose on 3307 to avoid conflicts with local MySQL
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: openbookmanager
+      MYSQL_USER: bookmanager
+      MYSQL_PASSWORD: bookmanager123
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    networks:
+      - openbookmanager_network
+    restart: unless-stopped
+
+  # phpMyAdmin (optional, for database management)
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: openbookmanager_phpmyadmin
+    ports:
+      - "8080:80"
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: root
+    depends_on:
+      - db
+    networks:
+      - openbookmanager_network
+    restart: unless-stopped
+
+networks:
+  openbookmanager_network:
+    driver: bridge
+
+volumes:
+  db_data:
+    driver: local

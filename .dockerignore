@@ -1,0 +1,45 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Docker
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# Documentation
+README.md
+CLAUDE.md
+LICENSE
+
+# Scripts (not needed in container)
+scripts/
+
+# Config (will be created in container)
+config/config.php
+
+# Uploads (will be volume-mounted)
+public/uploads/*
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node (if used in future)
+node_modules
+npm-debug.log
+
+# Composer (if used in future)
+vendor
+composer.lock
