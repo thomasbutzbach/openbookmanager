@@ -19,9 +19,106 @@ A lightweight, self-developed web tool for managing a large book collection with
 - **Backend**: PHP 8.x with PDO
 - **Frontend**: HTML5, CSS3, Alpine.js
 - **Database**: MariaDB/MySQL
-- **Deployment**: Shared hosting compatible
+- **Deployment**: Shared hosting compatible OR Docker containers
 
-## Installation
+## Quick Start with Docker (Recommended for Local Use)
+
+The easiest way to run OpenBookManager locally is using Docker. This provides a complete LAMP stack without manual configuration.
+
+### Requirements
+
+- Docker Desktop (Windows/macOS) or Docker Engine (Linux)
+- Docker Compose (included with Docker Desktop)
+
+### Step 1: Clone Repository
+
+```bash
+git clone https://github.com/thomasbutzbach/openbookmanager.git
+cd openbookmanager
+```
+
+### Step 2: Start the Application
+
+**Linux/macOS:**
+```bash
+./start-bookmanager.sh
+```
+
+**Windows:**
+Double-click `start-bookmanager.bat` or run in Command Prompt:
+```cmd
+start-bookmanager.bat
+```
+
+That's it! The script will:
+- Check for Docker installation
+- Set up the configuration automatically
+- Build and start all containers (Web, Database, phpMyAdmin)
+- Open the application in your browser
+
+### Step 3: First Login
+
+The application will open at `http://localhost:8000`
+
+Default credentials:
+- **Username**: `admin`
+- **Password**: `admin123`
+
+⚠️ **IMPORTANT**: Change the password after first login!
+
+### Services
+
+When running with Docker, you have access to:
+- **OpenBookManager**: http://localhost:8000
+- **phpMyAdmin**: http://localhost:8080 (for database management)
+- **MariaDB**: `localhost:3307` (for external tools)
+
+### Stopping the Application
+
+**Linux/macOS:**
+```bash
+./stop-bookmanager.sh
+```
+
+**Windows:**
+```cmd
+stop-bookmanager.bat
+```
+
+### Desktop Integration (Linux)
+
+To create a desktop launcher:
+
+1. Create a `.desktop` file:
+   ```bash
+   nano ~/.local/share/applications/openbookmanager.desktop
+   ```
+
+2. Add this content (adjust paths):
+   ```ini
+   [Desktop Entry]
+   Type=Application
+   Name=OpenBookManager
+   Comment=Book Collection Manager
+   Exec=/path/to/openbookmanager/start-bookmanager.sh
+   Icon=/path/to/openbookmanager/public/images/icon.png
+   Terminal=true
+   Categories=Utility;Database;
+   ```
+
+3. Make it executable and refresh:
+   ```bash
+   chmod +x ~/.local/share/applications/openbookmanager.desktop
+   update-desktop-database ~/.local/share/applications
+   ```
+
+The application will now appear in your application menu!
+
+---
+
+## Production Installation (Web Server)
+
+For production deployment on a web server (shared hosting, VPS, etc.), follow these instructions instead.
 
 ### Requirements
 

@@ -24,12 +24,16 @@ CREATE TABLE `maincategories` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- CATEGORIES (SUBCATEGORIES)
+-- Composite Primary Key: (code, code_maincategory)
+-- This allows the same subcategory code to exist in different main categories
+-- Example: "PH" can be in both "SF" (Science Fiction) and "WR" (Research)
 CREATE TABLE `categories` (
-    `code` VARCHAR(2) NOT NULL PRIMARY KEY,
+    `code` VARCHAR(2) NOT NULL,
     `code_maincategory` VARCHAR(2) NOT NULL,
     `title` VARCHAR(255) NOT NULL,
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`code`, `code_maincategory`),
     FOREIGN KEY (`code_maincategory`) REFERENCES `maincategories`(`code`) ON DELETE RESTRICT ON UPDATE CASCADE,
     INDEX `idx_maincategory` (`code_maincategory`),
     INDEX `idx_title` (`title`)
@@ -55,18 +59,19 @@ CREATE TABLE `books` (
     `isbn` VARCHAR(50) NULL,
     `cover_image` VARCHAR(500) NULL,
     `code_category` VARCHAR(2) NOT NULL,
+    `code_maincategory` VARCHAR(2) NOT NULL,
     `number_in_category` INT UNSIGNED NOT NULL,
     `publisher` VARCHAR(255) NULL,
     `language` VARCHAR(10) NULL,
     `notes` TEXT NULL,
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (`code_category`) REFERENCES `categories`(`code`) ON DELETE RESTRICT ON UPDATE CASCADE,
-    UNIQUE KEY `unique_category_number` (`code_category`, `number_in_category`),
+    FOREIGN KEY (`code_category`, `code_maincategory`) REFERENCES `categories`(`code`, `code_maincategory`) ON DELETE RESTRICT ON UPDATE CASCADE,
+    UNIQUE KEY `unique_category_number` (`code_category`, `code_maincategory`, `number_in_category`),
     INDEX `idx_title` (`title`),
     INDEX `idx_isbn` (`isbn`),
     INDEX `idx_year` (`year`),
-    INDEX `idx_category` (`code_category`)
+    INDEX `idx_category` (`code_category`, `code_maincategory`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- BOOK_AUTHOR (PIVOT TABLE)
@@ -91,12 +96,47 @@ CREATE TABLE `wishlist` (
     INDEX `idx_title` (`title`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- CATEGORY SEQUENCES (for autoincrement book numbers per category)
+CREATE TABLE `category_sequences` (
+    `code_category` VARCHAR(2) NOT NULL,
+    `code_maincategory` VARCHAR(2) NOT NULL,
+    `next_number` INT UNSIGNED NOT NULL DEFAULT 1,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`code_category`, `code_maincategory`),
+    FOREIGN KEY (`code_category`, `code_maincategory`) REFERENCES `categories`(`code`, `code_maincategory`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- SCANNED BOOKS (staging table for import manager)
+CREATE TABLE `scanned_books` (
+    `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `isbn` VARCHAR(50) NULL,
+    `title` VARCHAR(500) NULL,
+    `author` VARCHAR(500) NULL,
+    `year` INT UNSIGNED NULL,
+    `publisher` VARCHAR(255) NULL,
+    `cover_url` VARCHAR(500) NULL,
+    `suggested_code_category` VARCHAR(2) NULL,
+    `suggested_code_maincategory` VARCHAR(2) NULL,
+    `raw_data` JSON NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX `idx_isbn` (`isbn`),
+    INDEX `idx_suggested_category` (`suggested_code_category`, `suggested_code_maincategory`),
+    FOREIGN KEY (`suggested_code_category`, `suggested_code_maincategory`) REFERENCES `categories`(`code`, `code_maincategory`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- USERS (Single-user authentication)
 CREATE TABLE `users` (
     `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     `username` VARCHAR(100) NOT NULL UNIQUE,
     `password` VARCHAR(255) NOT NULL,
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- SYSTEM INFO (for version tracking and settings)
+CREATE TABLE `system_info` (
+    `key` VARCHAR(100) NOT NULL PRIMARY KEY,
+    `value` TEXT NOT NULL,
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -115,7 +155,15 @@ CREATE TABLE `changelog` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- SAMPLE DATA FOR TESTING
--- Note: Admin user will be created during installation
+
+-- Default admin user (username: admin, password: admin123)
+-- ⚠️ IMPORTANT: Change this password after first login!
+INSERT INTO `users` (`username`, `password`) VALUES
+('admin', '$2y$10$YgUs0fTn09ws84BLjSbKzOP5jSRkfGh90bsP4cRAsZ27LUm0cOM2C');
+
+-- System version information
+INSERT INTO `system_info` (`key`, `value`) VALUES
+('version', '{"version": "1.0.0", "schema": "1.0.0", "updated_at": "2025-12-20"}');
 
 -- Sample main categories
 INSERT INTO `maincategories` (`code`, `title`) VALUES
@@ -141,10 +189,10 @@ INSERT INTO `authors` (`surname`, `lastname`) VALUES
 ('Stephen', 'Hawking');
 
 -- Sample books
-INSERT INTO `books` (`title`, `year`, `isbn`, `code_category`, `number_in_category`, `publisher`, `language`, `notes`) VALUES
-('Die Welt als Wille und Vorstellung', 1819, '9783458352679', 'PH', 1, 'Insel Verlag', 'DE', 'Philosophy classic'),
-('A Brief History of Time', 1988, '9783499626005', 'PH', 2, 'Bantam Books', 'EN', 'Popular science'),
-('Foundation', 1951, '9780553293357', 'RO', 1, 'Gnome Press', 'EN', 'Science Fiction classic');
+INSERT INTO `books` (`title`, `year`, `isbn`, `code_category`, `code_maincategory`, `number_in_category`, `publisher`, `language`, `notes`) VALUES
+('Die Welt als Wille und Vorstellung', 1819, '9783458352679', 'PH', 'WR', 1, 'Insel Verlag', 'DE', 'Philosophy classic'),
+('A Brief History of Time', 1988, '9783499626005', 'PH', 'WR', 2, 'Bantam Books', 'EN', 'Popular science'),
+('Foundation', 1951, '9780553293357', 'RO', 'BL', 1, 'Gnome Press', 'EN', 'Science Fiction classic');
 
 -- Link books to authors
 INSERT INTO `book_author` (`book_id`, `author_id`) VALUES
