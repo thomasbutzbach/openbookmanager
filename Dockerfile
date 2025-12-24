@@ -11,11 +11,17 @@ RUN apt-get update && apt-get install -y \
     libzip-dev \
     zip \
     unzip \
+    libmagickwand-dev \
+    imagemagick \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Install PHP extensions
 RUN docker-php-ext-install pdo pdo_mysql mysqli mbstring exif pcntl bcmath gd zip
+
+# Install Imagick extension for image conversion
+RUN pecl install imagick \
+    && docker-php-ext-enable imagick
 
 # Enable Apache modules
 RUN a2enmod rewrite headers
@@ -40,7 +46,8 @@ WORKDIR /var/www/html
 COPY . /var/www/html
 
 # Set permissions for uploads directory
-RUN mkdir -p /var/www/html/public/uploads \
+RUN mkdir -p /var/www/html/public/uploads/covers \
+    && mkdir -p /var/www/html/public/uploads/documents \
     && chown -R www-data:www-data /var/www/html/public/uploads \
     && chmod -R 775 /var/www/html/public/uploads
 

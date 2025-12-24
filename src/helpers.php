@@ -899,6 +899,256 @@ function generateDualBookLabel($mainCategoryCode, $categoryCode, $number, $autho
 }
 
 // ============================================================================
+// Cover Upload Functions
+// ============================================================================
+
+/**
+ * Get the covers upload directory path
+ */
+function getCoversDir(): string {
+    return __DIR__ . '/../public/uploads/covers/';
+}
+
+/**
+ * Get allowed cover image MIME types
+ */
+function getAllowedCoverMimeTypes(): array {
+    return [
+        'jpg' => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'gif' => 'image/gif',
+        'webp' => 'image/webp',
+        'tif' => 'image/tiff',
+        'tiff' => 'image/tiff',
+    ];
+}
+
+/**
+ * Convert TIFF image to JPEG
+ *
+ * @param string $sourcePath Path to TIFF file
+ * @param string $targetPath Path for output JPEG file
+ * @param int $quality JPEG quality (1-100, default 90)
+ * @return bool True on success, false on failure
+ */
+function convertTiffToJpeg(string $sourcePath, string $targetPath, int $quality = 90): bool {
+    // Check if Imagick is available
+    if (!extension_loaded('imagick')) {
+        return false;
+    }
+
+    try {
+        $imagick = new Imagick($sourcePath);
+
+        // Convert to JPEG
+        $imagick->setImageFormat('jpeg');
+        $imagick->setImageCompressionQuality($quality);
+
+        // Write to target path
+        $imagick->writeImage($targetPath);
+
+        // Clean up
+        $imagick->clear();
+        $imagick->destroy();
+
+        return true;
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
+/**
+ * Get maximum cover size in bytes
+ */
+function getMaxCoverSize($config): int {
+    $maxMb = $config['upload']['max_size'] ?? (5 * 1024 * 1024);
+    // If it's already in bytes, return it; if in MB, convert
+    return $maxMb > 1000 ? $maxMb : ($maxMb * 1024 * 1024);
+}
+
+/**
+ * Validate and upload a book cover image
+ *
+ * @param array $file The $_FILES['cover'] array
+ * @param int $bookId The book ID for naming the file
+ * @param array $config Application config
+ * @param PDO $db Database connection to fetch ISBN
+ * @return array ['success' => bool, 'path' => string|null, 'error' => string|null]
+ */
+function uploadBookCover(array $file, int $bookId, array $config, PDO $db): array {
+    // Check for upload errors
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        $errorMessages = [
+            UPLOAD_ERR_INI_SIZE => 'File exceeds the upload_max_filesize directive.',
+            UPLOAD_ERR_FORM_SIZE => 'File exceeds the MAX_FILE_SIZE directive.',
+            UPLOAD_ERR_PARTIAL => 'File was only partially uploaded.',
+            UPLOAD_ERR_NO_FILE => 'No file was uploaded.',
+            UPLOAD_ERR_NO_TMP_DIR => 'Missing temporary folder.',
+            UPLOAD_ERR_CANT_WRITE => 'Failed to write file to disk.',
+            UPLOAD_ERR_EXTENSION => 'A PHP extension stopped the upload.',
+        ];
+        $error = $errorMessages[$file['error']] ?? 'Unknown upload error.';
+        return ['success' => false, 'path' => null, 'error' => $error];
+    }
+
+    // Check file size
+    $maxSize = getMaxCoverSize($config);
+    if ($file['size'] > $maxSize) {
+        $maxMb = round($maxSize / 1024 / 1024, 1);
+        return ['success' => false, 'path' => null, 'error' => "File exceeds maximum size of {$maxMb} MB."];
+    }
+
+    // Get file extension
+    $originalName = $file['name'];
+    $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+
+    // Validate extension
+    $allowedTypes = $config['upload']['allowed_types'] ?? ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+    if (!in_array($extension, $allowedTypes)) {
+        $allowed = implode(', ', $allowedTypes);
+        return ['success' => false, 'path' => null, 'error' => "Invalid file type. Allowed: {$allowed}."];
+    }
+
+    // Validate MIME type
+    $allowedMimes = getAllowedCoverMimeTypes();
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mimeType = finfo_file($finfo, $file['tmp_name']);
+    finfo_close($finfo);
+
+    $expectedMime = $allowedMimes[$extension] ?? null;
+    if (!$expectedMime || $mimeType !== $expectedMime) {
+        return ['success' => false, 'path' => null, 'error' => 'File content does not match its extension.'];
+    }
+
+    // Validate that it's actually an image
+    $imageInfo = @getimagesize($file['tmp_name']);
+    if ($imageInfo === false) {
+        return ['success' => false, 'path' => null, 'error' => 'File is not a valid image.'];
+    }
+
+    // Ensure upload directory exists
+    $uploadsDir = getCoversDir();
+    if (!is_dir($uploadsDir)) {
+        if (!mkdir($uploadsDir, 0755, true)) {
+            return ['success' => false, 'path' => null, 'error' => 'Failed to create upload directory.'];
+        }
+    }
+
+    // Get ISBN from database for filename
+    $stmt = $db->prepare('SELECT isbn FROM books WHERE id = ?');
+    $stmt->execute([$bookId]);
+    $bookData = $stmt->fetch();
+    $isbn = $bookData['isbn'] ?? null;
+
+    // Delete existing cover if present (different extension)
+    deleteBookCoverByBookId($bookId, $db);
+
+    // Check if this is a TIFF file that needs conversion
+    $isTiff = in_array($extension, ['tif', 'tiff']);
+    $finalExtension = $isTiff ? 'jpg' : $extension;
+
+    // Generate filename based on ISBN (same as downloadBookCover)
+    // Use ISBN if available, otherwise fall back to book ID
+    if (!empty($isbn)) {
+        // Clean ISBN: remove everything except digits and X
+        $cleanIsbn = preg_replace('/[^0-9X]/i', '', $isbn);
+        $filename = 'isbn_' . $cleanIsbn . '.' . $finalExtension;
+    } else {
+        // Fallback: use book ID if no ISBN
+        $filename = 'book_' . $bookId . '.' . $finalExtension;
+    }
+
+    $fullPath = $uploadsDir . $filename;
+    $relativePath = '/uploads/covers/' . $filename;
+
+    // Move uploaded file to temporary location if TIFF, otherwise to final location
+    $tempPath = $isTiff ? $uploadsDir . 'temp_' . $bookId . '.' . $extension : $fullPath;
+
+    if (!move_uploaded_file($file['tmp_name'], $tempPath)) {
+        return ['success' => false, 'path' => null, 'error' => 'Failed to save uploaded file.'];
+    }
+
+    // Convert TIFF to JPEG if needed
+    if ($isTiff) {
+        if (!convertTiffToJpeg($tempPath, $fullPath, 90)) {
+            @unlink($tempPath); // Clean up temp file
+            return ['success' => false, 'path' => null, 'error' => 'Failed to convert TIFF to JPEG. Please ensure ImageMagick is installed.'];
+        }
+        // Delete temporary TIFF file after successful conversion
+        @unlink($tempPath);
+    }
+
+    return ['success' => true, 'path' => $relativePath, 'error' => null];
+}
+
+/**
+ * Delete a book cover by its relative path
+ *
+ * @param string|null $relativePath The relative path stored in database
+ * @return bool True if deleted or didn't exist, false on error
+ */
+function deleteBookCover(?string $relativePath): bool {
+    if (empty($relativePath)) {
+        return true;
+    }
+
+    // Security: ensure path is within covers directory
+    if (strpos($relativePath, '/uploads/covers/') !== 0) {
+        return false;
+    }
+
+    $filename = basename($relativePath);
+    $fullPath = getCoversDir() . $filename;
+
+    if (file_exists($fullPath)) {
+        return unlink($fullPath);
+    }
+
+    return true;
+}
+
+/**
+ * Delete any existing cover for a book ID (checks all image extensions)
+ * Checks both ISBN-based and ID-based filenames for compatibility
+ *
+ * @param int $bookId The book ID
+ * @param PDO $db Database connection to fetch ISBN
+ * @return bool True if deleted or didn't exist
+ */
+function deleteBookCoverByBookId(int $bookId, PDO $db): bool {
+    $uploadsDir = getCoversDir();
+    $extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+
+    // Get ISBN from database
+    $stmt = $db->prepare('SELECT isbn FROM books WHERE id = ?');
+    $stmt->execute([$bookId]);
+    $bookData = $stmt->fetch();
+    $isbn = $bookData['isbn'] ?? null;
+
+    // Check and delete ISBN-based files (preferred)
+    if (!empty($isbn)) {
+        $cleanIsbn = preg_replace('/[^0-9X]/i', '', $isbn);
+        foreach ($extensions as $ext) {
+            $path = $uploadsDir . 'isbn_' . $cleanIsbn . '.' . $ext;
+            if (file_exists($path)) {
+                unlink($path);
+            }
+        }
+    }
+
+    // Also check and delete old ID-based files (for backwards compatibility)
+    foreach ($extensions as $ext) {
+        $path = $uploadsDir . 'book_' . $bookId . '.' . $ext;
+        if (file_exists($path)) {
+            unlink($path);
+        }
+    }
+
+    return true;
+}
+
+// ============================================================================
 // Document Upload Functions
 // ============================================================================
 

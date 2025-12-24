@@ -40,6 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'author_ids' => $_POST['author_ids'] ?? [],
         'format_type' => trim($_POST['format_type'] ?? 'physical'),
         'delete_document' => isset($_POST['delete_document']),
+        'delete_cover' => isset($_POST['delete_cover']),
     ];
 
     // Validation
@@ -101,11 +102,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            // Get current document path before update
-            $stmt = $db->prepare('SELECT document_file FROM books WHERE id = ?');
+            // Get current document and cover paths before update
+            $stmt = $db->prepare('SELECT document_file, cover_image FROM books WHERE id = ?');
             $stmt->execute([$bookId]);
-            $currentDoc = $stmt->fetch();
-            $currentDocumentFile = $currentDoc['document_file'] ?? null;
+            $currentData = $stmt->fetch();
+            $currentDocumentFile = $currentData['document_file'] ?? null;
+            $currentCoverImage = $currentData['cover_image'] ?? null;
 
             // Handle document deletion
             $documentFile = $currentDocumentFile;
@@ -123,6 +125,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         deleteBookDocument($currentDocumentFile);
                     }
                     $documentFile = $uploadResult['path'];
+                } else {
+                    $errors[] = $uploadResult['error'];
+                }
+            }
+
+            // Handle cover image
+            $coverImage = $formData['cover_image']; // Default: URL from form
+
+            // Handle cover deletion
+            if ($formData['delete_cover'] && $currentCoverImage) {
+                // Only delete if it's a local upload
+                if (strpos($currentCoverImage, '/uploads/covers/') === 0) {
+                    deleteBookCover($currentCoverImage);
+                }
+                $coverImage = null;
+            }
+
+            // Handle cover upload (takes precedence over URL)
+            if (isset($_FILES['cover_upload']) && $_FILES['cover_upload']['error'] !== UPLOAD_ERR_NO_FILE) {
+                $uploadResult = uploadBookCover($_FILES['cover_upload'], $bookId, $config, $db);
+                if ($uploadResult['success']) {
+                    // Delete old cover if exists and different (and is local)
+                    if ($currentCoverImage && strpos($currentCoverImage, '/uploads/covers/') === 0 && $currentCoverImage !== $uploadResult['path']) {
+                        deleteBookCover($currentCoverImage);
+                    }
+                    $coverImage = $uploadResult['path'];
                 } else {
                     $errors[] = $uploadResult['error'];
                 }
@@ -153,7 +181,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $formData['title'],
                     $formData['year'],
                     $formData['isbn'] ?: null,
-                    $formData['cover_image'] ?: null,
+                    $coverImage ?: null,
                     $documentFile,
                     $formData['format_type'],
                     $formData['code_category'],
@@ -382,7 +410,7 @@ include __DIR__ . '/../../src/Views/layout/header.php';
             </div>
 
             <div class="form-row">
-                <div class="form-group" style="grid-column: span 2;">
+                <div class="form-group">
                     <label for="cover_image">Cover Image URL</label>
                     <input
                         type="url"
@@ -391,7 +419,26 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                         placeholder="https://example.com/cover.jpg"
                         value="<?= e($formData['cover_image'] ?? '') ?>"
                     >
-                    <small class="form-help">Enter a URL to a cover image (file upload coming soon)</small>
+                    <small class="form-help">Enter a URL to a cover image</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="cover_upload">Or Upload Cover Image</label>
+                    <?php if (!empty($book['cover_image']) && strpos($book['cover_image'], '/uploads/covers/') === 0): ?>
+                        <div style="margin-bottom: 0.5rem;">
+                            <img src="<?= e($book['cover_image']) ?>" alt="Current Cover" style="max-width: 150px; max-height: 200px; border: 1px solid var(--border-color); border-radius: 0.25rem;">
+                        </div>
+                        <label style="font-weight: normal; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.25rem;">
+                            <input type="checkbox" name="delete_cover" value="1"> Delete current cover
+                        </label>
+                    <?php endif; ?>
+                    <input
+                        type="file"
+                        id="cover_upload"
+                        name="cover_upload"
+                        accept="image/jpeg,image/png,image/gif,image/webp,image/tiff"
+                    >
+                    <small class="form-help">JPG, PNG, GIF, WebP or TIFF (auto-converts to JPG), max <?= round(($config['upload']['max_size'] ?? 5242880) / 1024 / 1024, 1) ?> MB<?= !empty($book['cover_image']) && strpos($book['cover_image'], '/uploads/covers/') === 0 ? ' (replaces current)' : '' ?></small>
                 </div>
             </div>
 
