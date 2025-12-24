@@ -43,8 +43,8 @@ return [
     'upload' => [
         'path' => __DIR__ . '/../public/uploads/',
         'url' => '/uploads/',
-        'max_size' => 5 * 1024 * 1024, // 5 MB
-        'allowed_types' => ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+        'max_size' => 5 * 1024 * 1024, // 5 MB (for cover images)
+        'allowed_types' => ['jpg', 'jpeg', 'png', 'gif', 'webp', 'tif', 'tiff'], // TIFF auto-converts to JPG
     ],
 
     // Pagination (per object type)
