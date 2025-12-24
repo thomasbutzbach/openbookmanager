@@ -413,13 +413,13 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                 <div class="form-group">
                     <label for="cover_image">Cover Image URL</label>
                     <input
-                        type="url"
+                        type="text"
                         id="cover_image"
                         name="cover_image"
-                        placeholder="https://example.com/cover.jpg"
+                        placeholder="https://example.com/cover.jpg or /uploads/covers/image.jpg"
                         value="<?= e($formData['cover_image'] ?? '') ?>"
                     >
-                    <small class="form-help">Enter a URL to a cover image</small>
+                    <small class="form-help">Enter a URL or local path to a cover image</small>
                 </div>
 
                 <div class="form-group">
