@@ -132,6 +132,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Handle cover image
             $coverImage = $formData['cover_image']; // Default: URL from form
+            $coverWasUpdated = false; // Track if cover was changed for cache-busting
 
             // Handle cover deletion
             if ($formData['delete_cover'] && $currentCoverImage) {
@@ -140,6 +141,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     deleteBookCover($currentCoverImage);
                 }
                 $coverImage = null;
+                $coverWasUpdated = true;
             }
 
             // Handle cover upload (takes precedence over URL)
@@ -151,6 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         deleteBookCover($currentCoverImage);
                     }
                     $coverImage = $uploadResult['path'];
+                    $coverWasUpdated = true;
                 } else {
                     $errors[] = $uploadResult['error'];
                 }
@@ -206,7 +209,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $db->commit();
 
                 setFlash('success', 'Book updated successfully!');
-                redirect('/books/view.php?id=' . $bookId);
+
+                // Add cache-busting parameter if cover was updated
+                $redirectUrl = '/books/view.php?id=' . $bookId;
+                if ($coverWasUpdated) {
+                    $redirectUrl .= '&updated=' . time();
+                }
+                redirect($redirectUrl);
             }
 
         } catch (PDOException $e) {

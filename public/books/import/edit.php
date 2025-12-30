@@ -73,6 +73,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'publisher' => trim($_POST['publisher'] ?? ''),
         'language' => trim($_POST['language'] ?? ''),
         'code_category' => trim($_POST['code_category'] ?? ''),
+        'code_maincategory' => trim($_POST['code_maincategory'] ?? ''),
         'author_ids' => $_POST['author_ids'] ?? [],
         'new_authors' => $_POST['new_authors'] ?? [] // Format: ["surname|lastname", ...]
     ];
@@ -82,7 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = 'Title is required.';
     }
 
-    if (empty($formData['code_category'])) {
+    if (empty($formData['code_category']) || empty($formData['code_maincategory'])) {
         $errors[] = 'Category is required.';
     }
 
@@ -95,9 +96,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $db->beginTransaction();
 
-            // Get main category for the selected category
-            $stmt = $db->prepare('SELECT code_maincategory FROM categories WHERE code = ?');
-            $stmt->execute([$formData['code_category']]);
+            // Validate the category exists with both composite key parts
+            $stmt = $db->prepare('SELECT code, code_maincategory FROM categories WHERE code = ? AND code_maincategory = ?');
+            $stmt->execute([$formData['code_category'], $formData['code_maincategory']]);
             $categoryData = $stmt->fetch();
 
             if (!$categoryData) {
@@ -445,6 +446,9 @@ include __DIR__ . '/../../../src/Views/layout/header.php';
                             <option value="">Select category...</option>
                         </select>
 
+                        <!-- Hidden field to track main category for composite key -->
+                        <input type="hidden" id="code_maincategory" name="code_maincategory" value="">
+
                         <!-- Inline form for new category -->
                         <div id="new-category-form" style="display: none; margin-top: 0.75rem; padding: 0.75rem; background: var(--bg-secondary); border-radius: 0.25rem;">
                             <div class="form-group" style="margin-bottom: 0.5rem;">
@@ -489,6 +493,9 @@ function updateSubcategories() {
     const mainSelect = document.getElementById('main_category');
     const subSelect = document.getElementById('code_category');
     const mainCode = mainSelect.value;
+
+    // Update hidden field for composite key
+    document.getElementById('code_maincategory').value = mainCode;
 
     // Remember current selection
     const currentSelection = subSelect.value;
@@ -535,10 +542,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
 async function updateTagPreview() {
     const categoryCode = document.getElementById('code_category').value;
+    const mainCategoryCode = document.getElementById('code_maincategory').value;
     const previewDiv = document.getElementById('tag-preview');
     const previewText = document.getElementById('tag-preview-text');
 
-    if (!categoryCode) {
+    if (!categoryCode || !mainCategoryCode) {
         previewDiv.style.display = 'none';
         return;
     }
@@ -547,7 +555,10 @@ async function updateTagPreview() {
         const response = await fetch('/books/import/preview-tag.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ category: categoryCode })
+            body: JSON.stringify({
+                category: categoryCode,
+                main_category: mainCategoryCode
+            })
         });
 
         const data = await response.json();

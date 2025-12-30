@@ -20,21 +20,22 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 $input = json_decode(file_get_contents('php://input'), true);
 $categoryCode = trim($input['category'] ?? '');
+$mainCategoryCode = trim($input['main_category'] ?? '');
 
-if (empty($categoryCode)) {
-    echo json_encode(['success' => false, 'error' => 'Category is required']);
+if (empty($categoryCode) || empty($mainCategoryCode)) {
+    echo json_encode(['success' => false, 'error' => 'Category and main category are required']);
     exit;
 }
 
 try {
-    // Get category info including main category
+    // Get category info including main category (using composite key)
     $stmt = $db->prepare('
         SELECT c.code, c.code_maincategory, c.title, m.code as maincat_code
         FROM categories c
         JOIN maincategories m ON c.code_maincategory = m.code
-        WHERE c.code = ?
+        WHERE c.code = ? AND c.code_maincategory = ?
     ');
-    $stmt->execute([$categoryCode]);
+    $stmt->execute([$categoryCode, $mainCategoryCode]);
     $category = $stmt->fetch();
 
     if (!$category) {

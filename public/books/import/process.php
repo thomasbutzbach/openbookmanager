@@ -24,9 +24,10 @@ $input = json_decode(file_get_contents('php://input'), true);
 $scannedBookId = (int)($input['scanned_book_id'] ?? 0);
 $title = trim($input['title'] ?? '');
 $category = trim($input['category'] ?? '');
+$mainCategory = trim($input['main_category'] ?? '');
 $authors = $input['authors'] ?? [];
 
-if ($scannedBookId <= 0 || empty($title) || empty($category) || empty($authors)) {
+if ($scannedBookId <= 0 || empty($title) || empty($category) || empty($mainCategory) || empty($authors)) {
     echo json_encode(['success' => false, 'message' => 'Missing required fields']);
     exit;
 }
@@ -34,9 +35,9 @@ if ($scannedBookId <= 0 || empty($title) || empty($category) || empty($authors))
 try {
     $db->beginTransaction();
 
-    // Get main category for the selected category
-    $stmt = $db->prepare('SELECT code_maincategory FROM categories WHERE code = ?');
-    $stmt->execute([$category]);
+    // Validate the category exists with both composite key parts
+    $stmt = $db->prepare('SELECT code, code_maincategory FROM categories WHERE code = ? AND code_maincategory = ?');
+    $stmt->execute([$category, $mainCategory]);
     $categoryData = $stmt->fetch();
 
     if (!$categoryData) {

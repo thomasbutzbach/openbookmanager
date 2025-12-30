@@ -184,7 +184,15 @@ include __DIR__ . '/../../src/Views/layout/header.php';
         <div class="book-detail-sidebar">
             <?php if ($book['cover_image']): ?>
                 <div class="section">
-                    <img src="<?= e($book['cover_image']) ?>" alt="Book Cover" class="book-cover-large">
+                    <?php
+                    // Add cache-busting parameter if redirected from edit with updated cover
+                    $coverUrl = $book['cover_image'];
+                    if (isset($_GET['updated'])) {
+                        $separator = strpos($coverUrl, '?') !== false ? '&' : '?';
+                        $coverUrl .= $separator . 't=' . $_GET['updated'];
+                    }
+                    ?>
+                    <img src="<?= e($coverUrl) ?>" alt="Book Cover" class="book-cover-large">
                 </div>
             <?php else: ?>
                 <div class="section">
