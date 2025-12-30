@@ -17,6 +17,31 @@
 
 set -e
 
+# Auto-launch in terminal if not already running in one
+# This allows double-clicking the script in file managers
+if [ ! -t 0 ] && [ -z "$RUNNING_IN_TERMINAL" ]; then
+    export RUNNING_IN_TERMINAL=1
+
+    # Try different terminal emulators (ordered by preference)
+    if command -v konsole &> /dev/null; then
+        konsole -e "$0" "$@"
+        exit 0
+    elif command -v gnome-terminal &> /dev/null; then
+        gnome-terminal -- "$0" "$@"
+        exit 0
+    elif command -v xfce4-terminal &> /dev/null; then
+        xfce4-terminal -e "$0 $@"
+        exit 0
+    elif command -v xterm &> /dev/null; then
+        xterm -e "$0 $@"
+        exit 0
+    elif command -v x-terminal-emulator &> /dev/null; then
+        x-terminal-emulator -e "$0 $@"
+        exit 0
+    fi
+    # If no terminal found, continue anyway (headless mode)
+fi
+
 # Default configuration
 REMOVE_VOLUMES=false
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -50,6 +75,12 @@ show_help() {
     exit 0
 }
 
+wait_on_error() {
+    echo ""
+    echo "Press Enter to close this window..."
+    read -r
+}
+
 check_docker_compose() {
     # Determine which command to use
     if docker compose version &> /dev/null 2>&1; then
@@ -58,6 +89,7 @@ check_docker_compose() {
         COMPOSE_CMD="docker-compose"
     else
         print_error "Docker Compose is not installed"
+        wait_on_error
         exit 1
     fi
 }
@@ -111,6 +143,7 @@ while [[ $# -gt 0 ]]; do
         *)
             print_error "Unknown option: $1"
             echo "Use --help for usage information"
+            wait_on_error
             exit 1
             ;;
     esac
@@ -132,5 +165,9 @@ else
 fi
 
 echo ""
-print_success "Done!"
+print_success "Done! Terminal will close in 3 seconds..."
+for i in 3 2 1; do
+    echo -n "$i... "
+    sleep 1
+done
 echo ""
