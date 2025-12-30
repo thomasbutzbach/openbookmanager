@@ -174,7 +174,7 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                                     <td><strong><?= e($sub['title']) ?></strong></td>
                                     <td>
                                         <?php if ($sub['book_count'] > 0): ?>
-                                            <a href="/books/?category=<?= e($sub['code']) ?>">
+                                            <a href="/books/?category=<?= e($sub['code']) ?>&maincategory=<?= e($sub['code_maincategory']) ?>">
                                                 <?= $sub['book_count'] ?> book(s)
                                             </a>
                                         <?php else: ?>

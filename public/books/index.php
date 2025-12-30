@@ -11,6 +11,7 @@ requireAuth();
 // Get search and filter parameters
 $search = $_GET['search'] ?? '';
 $categoryFilter = $_GET['category'] ?? '';
+$maincategoryFilter = $_GET['maincategory'] ?? '';
 $languageFilter = $_GET['language'] ?? '';
 $sortBy = $_GET['sort'] ?? 'created_at';
 $sortOrder = $_GET['order'] ?? 'DESC';
@@ -35,8 +36,13 @@ if (!empty($search)) {
     $params[] = $searchParam;
 }
 
-// Category filter
-if (!empty($categoryFilter)) {
+// Category filter (composite key: both parts required)
+if (!empty($categoryFilter) && !empty($maincategoryFilter)) {
+    $whereClause .= ' AND b.code_category = ? AND b.code_maincategory = ?';
+    $params[] = $categoryFilter;
+    $params[] = $maincategoryFilter;
+} elseif (!empty($categoryFilter)) {
+    // Fallback: filter by category code only (shows all matching codes across main categories)
     $whereClause .= ' AND b.code_category = ?';
     $params[] = $categoryFilter;
 }
@@ -140,7 +146,7 @@ include __DIR__ . '/../../src/Views/layout/header.php';
     </div>
 
     <!-- Search and Filters -->
-    <div class="section" x-data="{ showFilters: <?= (!empty($categoryFilter) || !empty($languageFilter) || $sortBy !== 'created_at' || $sortOrder !== 'DESC') ? 'true' : 'false' ?> }">
+    <div class="section" x-data="{ showFilters: <?= (!empty($categoryFilter) || !empty($maincategoryFilter) || !empty($languageFilter) || $sortBy !== 'created_at' || $sortOrder !== 'DESC') ? 'true' : 'false' ?> }">
         <form method="GET" action="/books/" id="filterForm">
             <div class="filter-bar">
                 <div class="search-box">
@@ -158,7 +164,7 @@ include __DIR__ . '/../../src/Views/layout/header.php';
 
                 <button type="submit" class="btn btn-primary">Search</button>
 
-                <?php if (!empty($search) || !empty($categoryFilter) || !empty($languageFilter)): ?>
+                <?php if (!empty($search) || !empty($categoryFilter) || !empty($maincategoryFilter) || !empty($languageFilter)): ?>
                     <a href="/books/" class="btn btn-secondary">Clear</a>
                 <?php endif; ?>
             </div>
@@ -168,14 +174,27 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                 <div class="form-row">
                     <div class="form-group">
                         <label for="category">Category</label>
-                        <select name="category" id="category" @change="document.getElementById('filterForm').submit()">
+                        <input type="hidden" name="maincategory" id="maincategory_hidden" value="<?= e($maincategoryFilter) ?>">
+                        <select name="category" id="category" @change="updateMainCategory(); document.getElementById('filterForm').submit()">
                             <option value="">All Categories</option>
                             <?php foreach ($categories as $cat): ?>
-                                <option value="<?= e($cat['code']) ?>" <?= $categoryFilter === $cat['code'] ? 'selected' : '' ?>>
+                                <?php $isSelected = $categoryFilter === $cat['code'] && $maincategoryFilter === $cat['code_maincategory']; ?>
+                                <option
+                                    value="<?= e($cat['code']) ?>"
+                                    data-maincategory="<?= e($cat['code_maincategory']) ?>"
+                                    <?= $isSelected ? 'selected' : '' ?>>
                                     <?= e($cat['maincat_title']) ?> > <?= e($cat['title']) ?> (<?= e($cat['code']) ?>)
                                 </option>
                             <?php endforeach; ?>
                         </select>
+                        <script>
+                        function updateMainCategory() {
+                            const select = document.getElementById('category');
+                            const hidden = document.getElementById('maincategory_hidden');
+                            const selected = select.options[select.selectedIndex];
+                            hidden.value = selected.dataset.maincategory || '';
+                        }
+                        </script>
                     </div>
 
                     <div class="form-group">
@@ -216,7 +235,7 @@ include __DIR__ . '/../../src/Views/layout/header.php';
     <div class="section">
         <?php if (empty($books)): ?>
             <p class="text-muted">
-                <?php if (!empty($search) || !empty($categoryFilter) || !empty($languageFilter)): ?>
+                <?php if (!empty($search) || !empty($categoryFilter) || !empty($maincategoryFilter) || !empty($languageFilter)): ?>
                     No books found matching your criteria.
                 <?php else: ?>
                     No books yet. <a href="/books/add.php">Add your first book</a>
@@ -227,7 +246,7 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                 <p class="text-muted" style="margin: 0;">
                     Showing <?= $pagination['offset'] + 1 ?> to <?= min($pagination['offset'] + $itemsPerPage, $totalBooks) ?>
                     of <?= $totalBooks ?> book(s)
-                    <?php if (!empty($search) || !empty($categoryFilter) || !empty($languageFilter)): ?>
+                    <?php if (!empty($search) || !empty($categoryFilter) || !empty($maincategoryFilter) || !empty($languageFilter)): ?>
                         (filtered)
                     <?php endif; ?>
                 </p>
@@ -242,6 +261,7 @@ include __DIR__ . '/../../src/Views/layout/header.php';
                         $exportParams = [];
                         if (!empty($search)) $exportParams[] = 'search=' . urlencode($search);
                         if (!empty($categoryFilter)) $exportParams[] = 'category=' . urlencode($categoryFilter);
+                        if (!empty($maincategoryFilter)) $exportParams[] = 'maincategory=' . urlencode($maincategoryFilter);
                         if (!empty($languageFilter)) $exportParams[] = 'language=' . urlencode($languageFilter);
                         if ($sortBy !== 'created_at') $exportParams[] = 'sort=' . urlencode($sortBy);
                         if ($sortOrder !== 'DESC') $exportParams[] = 'order=' . urlencode($sortOrder);
@@ -354,6 +374,7 @@ include __DIR__ . '/../../src/Views/layout/header.php';
             $urlParams = [];
             if (!empty($search)) $urlParams[] = 'search=' . urlencode($search);
             if (!empty($categoryFilter)) $urlParams[] = 'category=' . urlencode($categoryFilter);
+            if (!empty($maincategoryFilter)) $urlParams[] = 'maincategory=' . urlencode($maincategoryFilter);
             if (!empty($languageFilter)) $urlParams[] = 'language=' . urlencode($languageFilter);
             if ($sortBy !== 'created_at') $urlParams[] = 'sort=' . urlencode($sortBy);
             if ($sortOrder !== 'DESC') $urlParams[] = 'order=' . urlencode($sortOrder);
