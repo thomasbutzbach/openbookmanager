@@ -11,7 +11,7 @@
 #
 # Options:
 #   -n, --no-browser      Don't automatically open the browser
-#   -d, --detach          Run in background (detached mode)
+#   -f, --foreground      Run in foreground (for debugging, blocks terminal)
 #   -r, --rebuild         Force rebuild of Docker images
 #   -h, --help            Show this help message
 #
@@ -30,9 +30,34 @@
 
 set -e
 
+# Auto-launch in terminal if not already running in one
+# This allows double-clicking the script in file managers
+if [ ! -t 0 ] && [ -z "$RUNNING_IN_TERMINAL" ]; then
+    export RUNNING_IN_TERMINAL=1
+
+    # Try different terminal emulators (ordered by preference)
+    if command -v konsole &> /dev/null; then
+        konsole -e "$0" "$@"
+        exit 0
+    elif command -v gnome-terminal &> /dev/null; then
+        gnome-terminal -- "$0" "$@"
+        exit 0
+    elif command -v xfce4-terminal &> /dev/null; then
+        xfce4-terminal -e "$0 $@"
+        exit 0
+    elif command -v xterm &> /dev/null; then
+        xterm -e "$0 $@"
+        exit 0
+    elif command -v x-terminal-emulator &> /dev/null; then
+        x-terminal-emulator -e "$0 $@"
+        exit 0
+    fi
+    # If no terminal found, continue anyway (headless mode)
+fi
+
 # Default configuration
 AUTO_OPEN_BROWSER=true
-DETACH=false
+DETACH=true
 REBUILD=false
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -65,6 +90,12 @@ show_help() {
     exit 0
 }
 
+wait_on_error() {
+    echo ""
+    echo "Press Enter to close this window..."
+    read -r
+}
+
 check_docker() {
     if ! command -v docker &> /dev/null; then
         print_error "Docker is not installed or not in PATH"
@@ -72,6 +103,7 @@ check_docker() {
         echo "Please install Docker:"
         echo "  - Visit: https://docs.docker.com/engine/install/"
         echo ""
+        wait_on_error
         exit 1
     fi
 
@@ -82,6 +114,7 @@ check_docker() {
         echo "  - Linux: sudo systemctl start docker"
         echo "  - macOS/Windows: Start Docker Desktop"
         echo ""
+        wait_on_error
         exit 1
     fi
 
@@ -96,6 +129,7 @@ check_docker_compose() {
         echo "Please install Docker Compose:"
         echo "  - Visit: https://docs.docker.com/compose/install/"
         echo ""
+        wait_on_error
         exit 1
     fi
 
@@ -131,6 +165,7 @@ setup_config() {
                 echo "  - password: 'bookmanager123'"
             else
                 print_error "No configuration template found"
+                wait_on_error
                 exit 1
             fi
         fi
@@ -170,8 +205,8 @@ start_containers() {
         $COMPOSE_CMD up $BUILD_ARGS
     fi
 
-    # If detached, wait for services to be ready
-    if [ "$DETACH" = true ] || [ -z "$RUN_ARGS" ]; then
+    # If detached, wait for services to be ready and check status
+    if [ "$DETACH" = true ]; then
         print_info "Waiting for services to be ready..."
         sleep 3
 
@@ -182,6 +217,7 @@ start_containers() {
             print_error "Failed to start containers"
             echo ""
             echo "Check logs with: $COMPOSE_CMD logs"
+            wait_on_error
             exit 1
         fi
     fi
@@ -236,8 +272,8 @@ while [[ $# -gt 0 ]]; do
             AUTO_OPEN_BROWSER=false
             shift
             ;;
-        -d|--detach)
-            DETACH=true
+        -f|--foreground)
+            DETACH=false
             shift
             ;;
         -r|--rebuild)
@@ -250,6 +286,7 @@ while [[ $# -gt 0 ]]; do
         *)
             print_error "Unknown option: $1"
             echo "Use --help for usage information"
+            wait_on_error
             exit 1
             ;;
     esac
@@ -267,14 +304,25 @@ check_docker_compose
 setup_config
 start_containers
 
-# Only show info and open browser if running in detached mode
-if [ "$DETACH" = true ] || [ "$AUTO_OPEN_BROWSER" = true ]; then
+# Show info and open browser (only in detached mode)
+if [ "$DETACH" = true ]; then
     show_info
 
     if [ "$AUTO_OPEN_BROWSER" = true ]; then
         open_browser
     fi
-fi
 
-# If running in foreground, the script will stay attached to docker-compose
-# Ctrl+C will stop the containers
+    # Auto-close terminal after brief pause (for .desktop launches)
+    echo ""
+    print_success "All done! Terminal will close in 3 seconds..."
+    for i in 3 2 1; do
+        echo -n "$i... "
+        sleep 1
+    done
+    echo ""
+else
+    # Foreground mode: script stays attached to docker-compose
+    # Info is shown by docker-compose logs
+    # Ctrl+C will stop the containers
+    print_info "Running in foreground mode. Press Ctrl+C to stop."
+fi
