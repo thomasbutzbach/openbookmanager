@@ -25,10 +25,10 @@ services:
     ports:
       - "3307:3306"  # Expose on 3307 to avoid conflicts with local MySQL
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: openbookmanager
-      MYSQL_USER: bookmanager
-      MYSQL_PASSWORD: bookmanager123
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
     volumes:
       - db_data:/var/lib/mysql
       - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
@@ -46,7 +46,7 @@ services:
       PMA_HOST: db
       PMA_PORT: 3306
       PMA_USER: root
-      PMA_PASSWORD: root
+      PMA_PASSWORD: ${DB_ROOT_PASSWORD}
     depends_on:
       - db
     networks:
