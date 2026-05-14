@@ -101,6 +101,7 @@ CREATE TABLE `category_sequences` (
     `code_category` VARCHAR(2) NOT NULL,
     `code_maincategory` VARCHAR(2) NOT NULL,
     `next_number` INT UNSIGNED NOT NULL DEFAULT 1,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`code_category`, `code_maincategory`),
     FOREIGN KEY (`code_category`, `code_maincategory`) REFERENCES `categories`(`code`, `code_maincategory`) ON DELETE CASCADE ON UPDATE CASCADE
