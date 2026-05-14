@@ -112,6 +112,25 @@ include __DIR__ . '/../../src/Views/layout/header.php';
         <p class="text-muted">Create complete backups of your book collection for migration or archival purposes.</p>
 
         <div class="settings-grid">
+            <!-- Restore from Backup (ZIP) -->
+            <div class="settings-card" style="border-color: var(--danger-color, #dc3545);">
+                <div class="settings-card-icon">♻️</div>
+                <h3>Restore from Backup</h3>
+                <p>Restore your entire collection from a Full Backup ZIP file. <strong>This replaces all current data.</strong></p>
+
+                <div class="settings-stats">
+                    <strong>What will be restored:</strong>
+                    <ul>
+                        <li>All database data (books, authors, categories)</li>
+                        <li>Cover images and documents</li>
+                        <li>Wishlist and scanned books</li>
+                    </ul>
+                </div>
+
+                <a href="/exports/restore.php" class="btn btn-danger" style="width: 100%; margin-top: 1rem;">
+                    ♻️ Restore from ZIP Backup
+                </a>
+            </div>
             <!-- Full Backup with Files (ZIP) -->
             <div class="settings-card" style="border-color: var(--primary-color);">
                 <div class="settings-card-icon">📦</div>
