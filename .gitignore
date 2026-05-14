@@ -1,9 +1,15 @@
 # Configuration
 config/config.php
 
-# Uploads
+# Uploads - track directory structure, but not actual files
 public/uploads/*
 !public/uploads/.gitkeep
+!public/uploads/covers/
+public/uploads/covers/*
+!public/uploads/covers/.gitkeep
+!public/uploads/documents/
+public/uploads/documents/*
+!public/uploads/documents/.gitkeep
 
 # Backups
 backups/*
