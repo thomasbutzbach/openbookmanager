@@ -632,6 +632,24 @@ document.addEventListener('alpine:init', () => {
 });
 <?php endforeach; ?>
 
+// Persist filter state across navigation
+(function () {
+    var KEY = 'importManagerFilter';
+    var params = new URLSearchParams(window.location.search);
+    params.delete('page');
+
+    var hasFilter = params.toString() !== '';
+
+    if (hasFilter) {
+        localStorage.setItem(KEY, params.toString());
+    } else {
+        var saved = localStorage.getItem(KEY);
+        if (saved) {
+            window.location.replace('/books/import/?' + saved);
+        }
+    }
+})();
+
 // Remember category distribution open/closed state
 document.addEventListener('DOMContentLoaded', function() {
     const details = document.getElementById('categoryDistribution');
